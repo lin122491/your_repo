@@ -2,260 +2,290 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>交友APP 前端（原型）</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>交友APP 前端（雲端自動偵測）</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:#f7f7fb;margin:0;color:#222}
+    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    h1{font-size:28px;margin:0 0 16px}
+    .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:18px 0}
+    .row{display:flex;gap:18px;flex-wrap:wrap}
+    .col{flex:1 1 420px;min-width:320px}
+    label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
+    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+    .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .btn.green{background:#0aa56b}
+    .btn.gray{background:#e5e7eb;color:#111}
+    .btn.red{background:#e63b3b}
+    .muted{color:#666;font-size:13px}
+    .status{font-weight:700;padding:5px 9px;border-radius:999px}
+    .ok{background:#e6f7ef;color:#117a47}
+    .bad{background:#fde8e8;color:#9b2226}
+    pre{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:10px;padding:12px;font-size:13px;overflow:auto}
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <div class="max-w-5xl mx-auto p-4 space-y-6">
-    <header class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">交友APP 前端（原型）</h1>
-      <div class="text-sm text-gray-500">請先啟動後端：<code>uvicorn app:app --reload</code></div>
-    </header>
+<body>
+<div class="wrap">
+  <h1>交友APP 前端（原型）</h1>
 
-    <!-- API 位置設定 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <h2 class="font-semibold text-lg mb-2">API 位置</h2>
-      <div class="flex flex-wrap gap-2 items-center">
-        <input id="apiBase" class="border rounded px-3 py-2 w-full sm:w-96" value="http://127.0.0.1:8000" />
-        <button id="pingBtn" class="px-3 py-2 rounded bg-gray-800 text-white">測試連線</button>
-        <span id="pingMsg" class="text-sm ml-2"></span>
-      </div>
-    </section>
-
-    <!-- 註冊 / 登入 -->
-    <section class="grid md:grid-cols-2 gap-4">
-      <div class="bg-white rounded-2xl shadow p-4">
-        <h2 class="font-semibold text-lg mb-3">註冊</h2>
-        <div class="space-y-2">
-          <input id="suUser" class="w-full border rounded px-3 py-2" placeholder="用戶名" />
-          <input id="suPass" type="password" class="w-full border rounded px-3 py-2" placeholder="密碼 (≥6)" />
-          <input id="suEmail" class="w-full border rounded px-3 py-2" placeholder="電子信箱 (可空白)" />
-          <button id="signupBtn" class="w-full px-3 py-2 rounded bg-blue-600 text-white">建立帳號</button>
-          <div id="signupMsg" class="text-sm"></div>
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>API 位置（可留空自動偵測，或貼上 Render 網址）</label>
+        <input id="apiBase" placeholder="例如：https://your-repo-xxxx.onrender.com">
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <button class="btn" id="btnSaveApi">儲存 API 位址</button>
+          <button class="btn gray" id="btnUseSameOrigin">使用目前站台（同源）</button>
+          <button class="btn" id="btnPing">測試連線</button>
+          <span id="pingResult" class="muted"></span>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          提示：若此頁是由後端提供（網址看起來像 <code>https://xxx.onrender.com/</code>），預設會自動使用該網域為 API。
         </div>
       </div>
-
-      <div class="bg-white rounded-2xl shadow p-4">
-        <h2 class="font-semibold text-lg mb-3">登入</h2>
-        <div class="space-y-2">
-          <input id="liUser" class="w-full border rounded px-3 py-2" placeholder="用戶名" />
-          <input id="liPass" type="password" class="w-full border rounded px-3 py-2" placeholder="密碼" />
-          <button id="loginBtn" class="w-full px-3 py-2 rounded bg-emerald-600 text-white">登入</button>
-          <div class="text-xs text-gray-500">登入成功後會儲存 Token 於本地（只在此頁面用）。</div>
-          <div id="loginMsg" class="text-sm"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Token 狀態 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="font-semibold">登入狀態：</span>
-        <span id="authState" class="px-2 py-1 rounded text-white bg-red-500">未登入</span>
-        <button id="logoutBtn" class="ml-auto px-3 py-2 rounded bg-gray-200">登出</button>
-      </div>
-      <div class="mt-2 text-xs text-gray-500 break-all" id="tokenPreview"></div>
-    </section>
-
-    <!-- 個人資料 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <h2 class="font-semibold text-lg mb-3">我的資料</h2>
-      <div class="flex flex-wrap gap-2 items-center mb-3">
-        <button id="meBtn" class="px-3 py-2 rounded bg-gray-800 text-white">取得 / 更新顯示</button>
-        <span id="meMsg" class="text-sm"></span>
-      </div>
-      <div class="grid md:grid-cols-3 gap-3">
-        <div>
-          <label class="text-sm text-gray-500">自我介紹</label>
-          <textarea id="meBio" class="w-full border rounded px-3 py-2" rows="3" placeholder="Hi！很高興認識你～"></textarea>
-        </div>
-        <div>
-          <label class="text-sm text-gray-500">性別</label>
-          <input id="meGender" class="w-full border rounded px-3 py-2" placeholder="男 / 女 / 其他" />
-        </div>
-        <div>
-          <label class="text-sm text-gray-500">生日</label>
-          <input id="meBirth" type="date" class="w-full border rounded px-3 py-2" />
-        </div>
-      </div>
-      <div class="mt-3">
-        <button id="meUpdateBtn" class="px-3 py-2 rounded bg-blue-600 text-white">儲存資料</button>
-        <span id="meUpdateMsg" class="text-sm ml-2"></span>
-      </div>
-    </section>
-
-    <!-- 定位 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <h2 class="font-semibold text-lg mb-3">定位</h2>
-      <div class="flex flex-wrap items-center gap-2">
-        <button id="geoBtn" class="px-3 py-2 rounded bg-indigo-600 text-white">使用瀏覽器定位</button>
-        <input id="lat" class="border rounded px-3 py-2 w-40" placeholder="緯度" />
-        <input id="lng" class="border rounded px-3 py-2 w-40" placeholder="經度" />
-        <button id="locSendBtn" class="px-3 py-2 rounded bg-indigo-950 text-white">上傳定位</button>
-        <span id="locMsg" class="text-sm"></span>
-      </div>
-    </section>
-
-    <!-- 附近的人 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <h2 class="font-semibold text-lg mb-3">附近的人</h2>
-      <div class="flex flex-wrap items-center gap-2 mb-3">
-        <input id="qRadius" type="number" class="border rounded px-3 py-2 w-32" value="5" />
-        <label class="text-sm">公里</label>
-        <input id="qActive" type="number" class="border rounded px-3 py-2 w-40" value="60" />
-        <label class="text-sm">分鐘內上線</label>
-        <button id="nearbyBtn" class="px-3 py-2 rounded bg-rose-600 text-white">搜尋</button>
-        <span id="nearbyMsg" class="text-sm"></span>
-      </div>
-      <div id="nearbyList" class="grid md:grid-cols-2 gap-3"></div>
-    </section>
-
-    <!-- 配對 -->
-    <section class="bg-white rounded-2xl shadow p-4">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="font-semibold text-lg">我的配對</h2>
-        <button id="matchesBtn" class="px-3 py-2 rounded bg-teal-600 text-white">重新整理</button>
-      </div>
-      <div id="matchesList" class="grid md:grid-cols-2 gap-3"></div>
-    </section>
+    </div>
   </div>
 
+  <div class="row">
+    <div class="card col">
+      <h3>註冊</h3>
+      <label>用戶名</label><input id="su_username" autocomplete="username">
+      <label>密碼 (&ge;6)</label><input id="su_password" type="password" autocomplete="new-password">
+      <label>電子信箱（可空白）</label><input id="su_email" type="email">
+      <div style="margin-top:10px"><button class="btn" id="btnSignup">建立帳號</button></div>
+      <div class="muted" id="su_msg" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card col">
+      <h3>登入</h3>
+      <label>用戶名</label><input id="li_username" autocomplete="username">
+      <label>密碼</label><input id="li_password" type="password" autocomplete="current-password">
+      <div style="margin-top:10px"><button class="btn green" id="btnLogin">登入</button></div>
+      <div class="muted" id="li_msg" style="margin-top:8px">登入成功後會儲存 Token（只在此頁面用）。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:center">
+      <div>登入狀態：<span id="authStatus" class="status bad">未登入</span></div>
+      <button class="btn gray" id="btnLogout">登出</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card col">
+      <h3>我的資料</h3>
+      <button class="btn" id="btnMe">取得 / 更新顯示</button>
+      <div class="muted" style="margin:10px 0">可在 Swagger 用 <code>/me</code> 更新更多欄位。</div>
+      <pre id="meOut">（尚無資料）</pre>
+    </div>
+
+    <div class="card col">
+      <h3>回報定位 & 搜附近</h3>
+      <label>緯度</label><input id="lat" placeholder="例如 25.033964">
+      <label>經度</label><input id="lng" placeholder="例如 121.564468">
+      <label>半徑 (km)</label><input id="radius" value="5">
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn" id="btnUpdateLoc">回報定位</button>
+        <button class="btn" id="btnNearby">找附近的人</button>
+      </div>
+      <pre id="nearbyOut">（尚無結果）</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>我的配對</h3>
+    <button class="btn" id="btnMatches">取得配對列表</button>
+    <pre id="matchOut">（尚無配對）</pre>
+  </div>
+</div>
+
 <script>
-const $ = (id) => document.getElementById(id);
-const state = {
-  token: localStorage.getItem('token') || '',
-  api() { return ($('apiBase').value || '').replace(/\/$/, ''); }
-};
+  // ----------- API Base：自動偵測 + 可覆寫 -----------
+  const apiInput = document.getElementById('apiBase');
+  const pingResult = document.getElementById('pingResult');
 
-function setAuthState() {
-  const badge = $('authState');
-  if (state.token) { badge.textContent = '已登入'; badge.className = 'px-2 py-1 rounded text-white bg-green-600'; }
-  else { badge.textContent = '未登入'; badge.className = 'px-2 py-1 rounded text-white bg-red-500'; }
-  $('tokenPreview').textContent = state.token ? `Bearer ${state.token}` : '';
-}
+  function sameOrigin() { return window.location.origin; }
 
-async function api(path, opts={}) {
-  const headers = {'Content-Type': 'application/json', ...(opts.headers||{})};
-  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
-  const res = await fetch(state.api() + path, {...opts, headers});
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+  function loadApiBase() {
+    // 優先 localStorage；沒有就嘗試使用同源（若此頁由後端提供，會通）
+    const saved = localStorage.getItem('apiBase');
+    if (saved) return saved;
 
-// 連線測試
-$('pingBtn').onclick = async () => {
-  $('pingMsg').textContent = '測試中…';
-  try { const r = await api('/'); $('pingMsg').textContent = r.ok ? '連線成功' : '無回應'; }
-  catch(e){ $('pingMsg').textContent = '連線失敗'; }
-};
+    // 若此頁是 http(s) 開頭（非 file://），預設用同源
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      return sameOrigin();
+    }
+    // 最後回空字串，等使用者自行貼上 Render 網址
+    return '';
+  }
 
-// 註冊
-$('signupBtn').onclick = async () => {
-  $('signupMsg').textContent = '處理中…';
-  try {
-    const body = { username: $('suUser').value, password: $('suPass').value };
-    const email = $('suEmail').value.trim(); if (email) body.email = email;
-    const r = await api('/auth/signup', {method:'POST', body: JSON.stringify(body)});
-    state.token = r.access_token; localStorage.setItem('token', state.token); setAuthState();
-    $('signupMsg').textContent = '註冊成功，已登入';
-  } catch(e){ $('signupMsg').textContent = '失敗：' + e.message; }
-};
+  function setApiBase(base) {
+    localStorage.setItem('apiBase', base.trim());
+    apiInput.value = base.trim();
+  }
 
-// 登入
-$('loginBtn').onclick = async () => {
-  $('loginMsg').textContent = '處理中…';
-  try {
-    const body = { username: $('liUser').value, password: $('liPass').value };
-    const r = await api('/auth/login', {method:'POST', body: JSON.stringify(body)});
-    state.token = r.access_token; localStorage.setItem('token', state.token); setAuthState();
-    $('loginMsg').textContent = '登入成功';
-  } catch(e){ $('loginMsg').textContent = '失敗：' + e.message; }
-};
+  let API_BASE = loadApiBase();
+  apiInput.value = API_BASE;
 
-$('logoutBtn').onclick = () => { state.token=''; localStorage.removeItem('token'); setAuthState(); };
+  document.getElementById('btnSaveApi').onclick = () => {
+    setApiBase(apiInput.value || '');
+    API_BASE = apiInput.value.trim();
+    ping();
+  };
 
-// 我的資料
-$('meBtn').onclick = async () => {
-  $('meMsg').textContent = '載入中…';
-  try {
-    const me = await api('/me');
-    $('meBio').value = me.bio || '';
-    $('meGender').value = me.gender || '';
-    $('meBirth').value = me.birthdate || '';
-    $('meMsg').textContent = `你好，${me.username}（ID: ${me.id}）`;
-  } catch(e){ $('meMsg').textContent = '失敗：' + e.message; }
-};
+  document.getElementById('btnUseSameOrigin').onclick = () => {
+    const origin = sameOrigin();
+    setApiBase(origin);
+    API_BASE = origin;
+    ping();
+  };
 
-$('meUpdateBtn').onclick = async () => {
-  $('meUpdateMsg').textContent = '儲存中…';
-  try {
-    const body = { bio: $('meBio').value, gender: $('meGender').value, birthdate: $('meBirth').value || null };
-    const me = await api('/me', {method:'PATCH', body: JSON.stringify(body)});
-    $('meUpdateMsg').textContent = '已儲存';
-  } catch(e){ $('meUpdateMsg').textContent = '失敗：' + e.message; }
-};
+  async function ping() {
+    pingResult.textContent = '連線測試中…';
+    try {
+      const r = await fetch(`${API_BASE}/health`);
+      if (r.ok) {
+        pingResult.innerHTML = `<span class="ok status">OK</span> 已連線：${API_BASE}`;
+      } else {
+        pingResult.innerHTML = `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
+      }
+    } catch (e) {
+      pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`;
+    }
+  }
+  document.getElementById('btnPing').onclick = ping;
 
-// 取得定位
-$('geoBtn').onclick = () => {
-  if (!navigator.geolocation) return alert('此瀏覽器不支援定位');
-  navigator.geolocation.getCurrentPosition(pos => {
-    $('lat').value = pos.coords.latitude.toFixed(6);
-    $('lng').value = pos.coords.longitude.toFixed(6);
-  }, err => alert('定位失敗：' + err.message), { enableHighAccuracy:true, timeout:10000 });
-};
+  // ----------- 簡易 auth helper -----------
+  const authStatus = document.getElementById('authStatus');
+  const tokenKey = 'authToken';
 
-// 上傳定位
-$('locSendBtn').onclick = async () => {
-  $('locMsg').textContent = '上傳中…';
-  try {
-    const body = { lat: parseFloat($('lat').value), lng: parseFloat($('lng').value) };
-    const r = await api('/me/location', {method:'POST', body: JSON.stringify(body)});
-    $('locMsg').textContent = '完成';
-  } catch(e){ $('locMsg').textContent = '失敗：' + e.message; }
-};
+  function setToken(t){ localStorage.setItem(tokenKey, t); refreshAuthStatus(); }
+  function getToken(){ return localStorage.getItem(tokenKey) || ''; }
+  function clearToken(){ localStorage.removeItem(tokenKey); refreshAuthStatus(); }
 
-// 附近的人
-$('nearbyBtn').onclick = async () => {
-  $('nearbyMsg').textContent = '查詢中…';
-  try {
-    const lat = parseFloat($('lat').value); const lng = parseFloat($('lng').value);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) { $('nearbyMsg').textContent = '請先填好緯度/經度或使用定位'; return; }
-    const body = { lat, lng, radius_km: parseFloat($('qRadius').value), active_within_min: parseInt($('qActive').value,10) };
-    const list = await api('/nearby', {method:'POST', body: JSON.stringify(body)});
-    $('nearbyList').innerHTML = list.map(u => `
-      <div class='border rounded-xl p-3 flex items-center justify-between'>
-        <div>
-          <div class='font-semibold'>${u.username} (ID: ${u.id})</div>
-          <div class='text-sm text-gray-600'>距離：${u.distance_km} 公里</div>
-          <div class='text-sm text-gray-600 truncate max-w-[28ch]'>${u.bio || ''}</div>
-        </div>
-        <button class='px-3 py-2 rounded bg-pink-600 text-white' onclick='likeUser(${u.id})'>喜歡</button>
-      </div>`).join('');
-    $('nearbyMsg').textContent = `找到 ${list.length} 位使用者`;
-  } catch(e){ $('nearbyMsg').textContent = '失敗：' + e.message; }
-};
+  function authHeader(){
+    const t = getToken();
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
 
-window.likeUser = async function(id){
-  try {
-    const r = await api(`/like/${id}`, {method:'POST'});
-    alert(r.is_match ? '配對成功！🎉' : '已送出喜歡');
-  } catch(e){ alert('失敗：' + e.message); }
-}
+  function refreshAuthStatus(){
+    if(getToken()){
+      authStatus.textContent = '已登入';
+      authStatus.className = 'status ok';
+    }else{
+      authStatus.textContent = '未登入';
+      authStatus.className = 'status bad';
+    }
+  }
+  refreshAuthStatus();
 
-// 配對
-$('matchesBtn').onclick = async () => {
-  try {
-    const list = await api('/matches');
-    $('matchesList').innerHTML = list.map(u => `
-      <div class='border rounded-xl p-3'>
-        <div class='font-semibold'>${u.username} (ID: ${u.id})</div>
-        <div class='text-sm text-gray-600'>${u.bio || ''}</div>
-      </div>`).join('');
-  } catch(e){ alert('讀取配對失敗：' + e.message); }
-};
+  // ----------- 註冊 / 登入 / 我 -----------
+  document.getElementById('btnSignup').onclick = async () => {
+    const username = document.getElementById('su_username').value.trim();
+    const password = document.getElementById('su_password').value;
+    const email = document.getElementById('su_email').value.trim();
+    const msg = document.getElementById('su_msg');
+    msg.textContent = '送出中…';
 
-setAuthState();
+    try{
+      const r = await fetch(`${API_BASE}/auth/signup`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password, email})
+      });
+      const data = await r.json();
+      if(!r.ok){ throw new Error(JSON.stringify(data)); }
+      msg.textContent = '註冊成功！請前往登入區登入。';
+    }catch(e){
+      msg.textContent = `失敗：${e.message || e}`;
+    }
+  };
+
+  document.getElementById('btnLogin').onclick = async () => {
+    const username = document.getElementById('li_username').value.trim();
+    const password = document.getElementById('li_password').value;
+    const msg = document.getElementById('li_msg');
+    msg.textContent = '登入中…';
+    try{
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await r.json();
+      if(!r.ok){ throw new Error(JSON.stringify(data)); }
+      setToken(data.access_token);
+      msg.textContent = '登入成功！';
+    }catch(e){
+      msg.textContent = `登入失敗：${e.message || e}`;
+    }
+  };
+
+  document.getElementById('btnLogout').onclick = () => { clearToken(); };
+
+  document.getElementById('btnMe').onclick = async () => {
+    const out = document.getElementById('meOut');
+    out.textContent = '讀取中…';
+    try{
+      const r = await fetch(`${API_BASE}/me`, { headers: {...authHeader()} });
+      const data = await r.json();
+      out.textContent = JSON.stringify(data, null, 2);
+    }catch(e){
+      out.textContent = `錯誤：${e.message || e}`;
+    }
+  };
+
+  // ----------- 定位 / 附近 / 配對 -----------
+  document.getElementById('btnUpdateLoc').onclick = async () => {
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lng = parseFloat(document.getElementById('lng').value);
+    try{
+      const r = await fetch(`${API_BASE}/me/location`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json',...authHeader()},
+        body: JSON.stringify({lat, lng})
+      });
+      alert(r.ok ? '定位已更新' : '更新失敗');
+    }catch{ alert('更新失敗'); }
+  };
+
+  document.getElementById('btnNearby').onclick = async () => {
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lng = parseFloat(document.getElementById('lng').value);
+    const radius_km = parseFloat(document.getElementById('radius').value || '5');
+    const out = document.getElementById('nearbyOut');
+    out.textContent = '搜尋中…';
+    try{
+      const r = await fetch(`${API_BASE}/nearby`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json',...authHeader()},
+        body: JSON.stringify({lat, lng, radius_km})
+      });
+      const data = await r.json();
+      out.textContent = JSON.stringify(data, null, 2);
+    }catch(e){
+      out.textContent = `錯誤：${e.message || e}`;
+    }
+  };
+
+  document.getElementById('btnMatches').onclick = async () => {
+    const out = document.getElementById('matchOut');
+    out.textContent = '讀取中…';
+    try{
+      const r = await fetch(`${API_BASE}/matches`, { headers:{...authHeader()} });
+      const data = await r.json();
+      out.textContent = JSON.stringify(data, null, 2);
+    }catch(e){
+      out.textContent = `錯誤：${e.message || e}`;
+    }
+  };
+
+  // 首次開頁先試一次連線
+  if (API_BASE) { ping(); }
 </script>
 </body>
 </html>
