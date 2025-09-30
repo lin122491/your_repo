@@ -1,0 +1,9 @@
+﻿fastapi
+uvicorn
+sqlalchemy>=2
+passlib[bcrypt]
+pyjwt
+pydantic
+email-validator
+python-multipart
+gunicorn
