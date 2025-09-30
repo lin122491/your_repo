@@ -7,3 +7,4 @@ pydantic
 email-validator
 python-multipart
 gunicorn
+bcrypt==4.2.0      # ← 新增：passlib 1.7.4 與 bcrypt 5.0.0 不相容
