@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>交友APP 前端（雲端自動偵測）</title>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <style>
     body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:#f7f7fb;margin:0;color:#222}
     .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
@@ -13,17 +12,13 @@
     .row{display:flex;gap:18px;flex-wrap:wrap}
     .col{flex:1 1 420px;min-width:320px}
     label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
-    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
-    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+    input{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
     .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
     .btn:disabled{opacity:.6;cursor:not-allowed}
-    .btn.green{background:#0aa56b}
-    .btn.gray{background:#e5e7eb;color:#111}
-    .btn.red{background:#e63b3b}
-    .muted{color:#666;font-size:13px}
-    .status{font-weight:700;padding:5px 9px;border-radius:999px}
-    .ok{background:#e6f7ef;color:#117a47}
-    .bad{background:#fde8e8;color:#9b2226}
+    .btn.green{background:#0aa56b}.btn.gray{background:#e5e7eb;color:#111}.btn.red{background:#e63b3b}
+    .muted{color:#666;font-size:13px}.status{font-weight:700;padding:5px 9px;border-radius:999px}
+    .ok{background:#e6f7ef;color:#117a47}.bad{background:#fde8e8;color:#9b2226}
     pre{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:10px;padding:12px;font-size:13px;overflow:auto}
   </style>
 </head>
@@ -34,16 +29,13 @@
   <div class="card">
     <div class="row">
       <div class="col">
-        <label>API 位置（可留空自動偵測，或貼上 Render 網址）</label>
-        <input id="apiBase" placeholder="例如：https://your-repo-xxxx.onrender.com">
+        <label>API 位置（預設：雲端；可改成本機或其他網址）</label>
+        <input id="apiBase" placeholder="例如：https://你的服務.onrender.com">
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
           <button class="btn" id="btnSaveApi">儲存 API 位址</button>
           <button class="btn gray" id="btnUseSameOrigin">使用目前站台（同源）</button>
           <button class="btn" id="btnPing">測試連線</button>
           <span id="pingResult" class="muted"></span>
-        </div>
-        <div class="muted" style="margin-top:6px">
-          提示：若此頁是由後端提供（網址看起來像 <code>https://xxx.onrender.com/</code>），預設會自動使用該網域為 API。
         </div>
       </div>
     </div>
@@ -54,7 +46,7 @@
       <h3>註冊</h3>
       <label>用戶名</label><input id="su_username" autocomplete="username">
       <label>密碼 (&ge;6)</label><input id="su_password" type="password" autocomplete="new-password">
-      <label>電子信箱（可空白）</label><input id="su_email" type="email">
+      <label>電子信箱（可空白）</label><input id="su_email" type="email" placeholder="可留空">
       <div style="margin-top:10px"><button class="btn" id="btnSignup">建立帳號</button></div>
       <div class="muted" id="su_msg" style="margin-top:8px"></div>
     </div>
@@ -104,188 +96,126 @@
 </div>
 
 <script>
-  // ----------- API Base：自動偵測 + 可覆寫 -----------
+  // === 預設雲端網址（改成你的 Render 網址） ===
+  const DEFAULT_CLOUD_API = "https://your-repo-3x92.onrender.com";
+
+  // ----- API base 設定 -----
   const apiInput = document.getElementById('apiBase');
   const pingResult = document.getElementById('pingResult');
 
-  function sameOrigin() { return window.location.origin; }
+  function sameOrigin(){ return window.location.origin; }
 
-  function loadApiBase() {
-    // 優先 localStorage；沒有就嘗試使用同源（若此頁由後端提供，會通）
-    const saved = localStorage.getItem('apiBase');
-    if (saved) return saved;
-
-    // 若此頁是 http(s) 開頭（非 file://），預設用同源
-    if (location.protocol === 'http:' || location.protocol === 'https:') {
-      return sameOrigin();
-    }
-    // 最後回空字串，等使用者自行貼上 Render 網址
-    return '';
+  function loadApiBase(){
+    const saved = localStorage.getItem('apiBase'); if (saved) return saved;
+    if (location.protocol === 'http:' || location.protocol === 'https:') return sameOrigin();
+    return DEFAULT_CLOUD_API;
   }
+  function setApiBase(base){ localStorage.setItem('apiBase', base.trim()); apiInput.value = base.trim(); }
 
-  function setApiBase(base) {
-    localStorage.setItem('apiBase', base.trim());
-    apiInput.value = base.trim();
-  }
+  let API_BASE = loadApiBase(); apiInput.value = API_BASE;
 
-  let API_BASE = loadApiBase();
-  apiInput.value = API_BASE;
+  document.getElementById('btnSaveApi').onclick = () => { setApiBase(apiInput.value||''); API_BASE = apiInput.value.trim(); ping(); };
+  document.getElementById('btnUseSameOrigin').onclick = () => { const o=sameOrigin(); setApiBase(o); API_BASE=o; ping(); };
 
-  document.getElementById('btnSaveApi').onclick = () => {
-    setApiBase(apiInput.value || '');
-    API_BASE = apiInput.value.trim();
-    ping();
-  };
-
-  document.getElementById('btnUseSameOrigin').onclick = () => {
-    const origin = sameOrigin();
-    setApiBase(origin);
-    API_BASE = origin;
-    ping();
-  };
-
-  async function ping() {
+  async function ping(){
     pingResult.textContent = '連線測試中…';
-    try {
+    try{
       const r = await fetch(`${API_BASE}/health`);
-      if (r.ok) {
-        pingResult.innerHTML = `<span class="ok status">OK</span> 已連線：${API_BASE}`;
-      } else {
-        pingResult.innerHTML = `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
-      }
-    } catch (e) {
-      pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`;
-    }
-  }
-  document.getElementById('btnPing').onclick = ping;
-
-  // ----------- 簡易 auth helper -----------
-  const authStatus = document.getElementById('authStatus');
-  const tokenKey = 'authToken';
-
-  function setToken(t){ localStorage.setItem(tokenKey, t); refreshAuthStatus(); }
-  function getToken(){ return localStorage.getItem(tokenKey) || ''; }
-  function clearToken(){ localStorage.removeItem(tokenKey); refreshAuthStatus(); }
-
-  function authHeader(){
-    const t = getToken();
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
+      pingResult.innerHTML = r.ok ? `<span class="ok status">OK</span> 已連線：${API_BASE}`
+                                  : `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
+    }catch{ pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`; }
   }
 
-  function refreshAuthStatus(){
-    if(getToken()){
-      authStatus.textContent = '已登入';
-      authStatus.className = 'status ok';
-    }else{
-      authStatus.textContent = '未登入';
-      authStatus.className = 'status bad';
-    }
+  // ----- 前端穩定解析 -----
+  async function safeParse(res){
+    const txt = await res.text();
+    try{ return [res.ok, JSON.parse(txt)]; }
+    catch{ return [res.ok, {detail: txt || `${res.status} ${res.statusText}` }]; }
   }
+
+  // ----- Auth 狀態 -----
+  const tokenKey='authToken', authStatus=document.getElementById('authStatus');
+  const setToken=t=>{ localStorage.setItem(tokenKey,t); refreshAuthStatus(); };
+  const getToken=()=> localStorage.getItem(tokenKey)||'';
+  const clearToken=()=>{ localStorage.removeItem(tokenKey); refreshAuthStatus(); };
+  const authHeader=()=> getToken()?{'Authorization':`Bearer ${getToken()}`}:{};
+  function refreshAuthStatus(){ if(getToken()){authStatus.textContent='已登入';authStatus.className='status ok';}else{authStatus.textContent='未登入';authStatus.className='status bad';} }
   refreshAuthStatus();
 
-  // ----------- 註冊 / 登入 / 我 -----------
-  document.getElementById('btnSignup').onclick = async () => {
-    const username = document.getElementById('su_username').value.trim();
-    const password = document.getElementById('su_password').value;
-    const email = document.getElementById('su_email').value.trim();
-    const msg = document.getElementById('su_msg');
-    msg.textContent = '送出中…';
-
+  // ----- 註冊 -----
+  document.getElementById('btnSignup').onclick = async ()=>{
+    const username=document.getElementById('su_username').value.trim();
+    const password=document.getElementById('su_password').value;
+    const email=(document.getElementById('su_email').value.trim()||null);
+    const msg=document.getElementById('su_msg'); msg.textContent='送出中…';
     try{
-      const r = await fetch(`${API_BASE}/auth/signup`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({username, password, email})
-      });
-      const data = await r.json();
-      if(!r.ok){ throw new Error(JSON.stringify(data)); }
-      msg.textContent = '註冊成功！請前往登入區登入。';
-    }catch(e){
-      msg.textContent = `失敗：${e.message || e}`;
-    }
+      const res=await fetch(`${API_BASE}/auth/signup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,email})});
+      const [ok,data]=await safeParse(res);
+      if(!ok) throw new Error(data.detail||'註冊失敗');
+      msg.textContent='註冊成功！請前往登入區登入。';
+    }catch(e){ msg.textContent=`失敗：${e.message||e}`; }
   };
 
-  document.getElementById('btnLogin').onclick = async () => {
-    const username = document.getElementById('li_username').value.trim();
-    const password = document.getElementById('li_password').value;
-    const msg = document.getElementById('li_msg');
-    msg.textContent = '登入中…';
+  // ----- 登入 -----
+  document.getElementById('btnLogin').onclick = async ()=>{
+    const username=document.getElementById('li_username').value.trim();
+    const password=document.getElementById('li_password').value;
+    const msg=document.getElementById('li_msg'); msg.textContent='登入中…';
     try{
-      const r = await fetch(`${API_BASE}/auth/login`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({username, password})
-      });
-      const data = await r.json();
-      if(!r.ok){ throw new Error(JSON.stringify(data)); }
-      setToken(data.access_token);
-      msg.textContent = '登入成功！';
-    }catch(e){
-      msg.textContent = `登入失敗：${e.message || e}`;
-    }
+      const res=await fetch(`${API_BASE}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const [ok,data]=await safeParse(res);
+      if(!ok) throw new Error(data.detail||'登入失敗');
+      setToken(data.access_token); msg.textContent='登入成功！';
+    }catch(e){ msg.textContent=`登入失敗：${e.message||e}`; }
   };
 
-  document.getElementById('btnLogout').onclick = () => { clearToken(); };
+  document.getElementById('btnLogout').onclick = ()=> clearToken();
 
-  document.getElementById('btnMe').onclick = async () => {
-    const out = document.getElementById('meOut');
-    out.textContent = '讀取中…';
+  // ----- 取得個人資料 -----
+  document.getElementById('btnMe').onclick = async ()=>{
+    const out=document.getElementById('meOut'); out.textContent='讀取中…';
     try{
-      const r = await fetch(`${API_BASE}/me`, { headers: {...authHeader()} });
-      const data = await r.json();
-      out.textContent = JSON.stringify(data, null, 2);
-    }catch(e){
-      out.textContent = `錯誤：${e.message || e}`;
-    }
+      const res=await fetch(`${API_BASE}/me`,{headers:{...authHeader()}});
+      const [ok,data]=await safeParse(res);
+      out.textContent = ok ? JSON.stringify(data,null,2) : `錯誤：${data.detail||'取得失敗'}`;
+    }catch(e){ out.textContent=`錯誤：${e.message||e}`; }
   };
 
-  // ----------- 定位 / 附近 / 配對 -----------
-  document.getElementById('btnUpdateLoc').onclick = async () => {
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lng = parseFloat(document.getElementById('lng').value);
+  // ----- 更新定位 -----
+  document.getElementById('btnUpdateLoc').onclick = async ()=>{
+    const lat=parseFloat(document.getElementById('lat').value);
+    const lng=parseFloat(document.getElementById('lng').value);
     try{
-      const r = await fetch(`${API_BASE}/me/location`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json',...authHeader()},
-        body: JSON.stringify({lat, lng})
-      });
-      alert(r.ok ? '定位已更新' : '更新失敗');
+      const res=await fetch(`${API_BASE}/me/location`,{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({lat,lng})});
+      alert(res.ok?'定位已更新':'更新失敗');
     }catch{ alert('更新失敗'); }
   };
 
-  document.getElementById('btnNearby').onclick = async () => {
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lng = parseFloat(document.getElementById('lng').value);
-    const radius_km = parseFloat(document.getElementById('radius').value || '5');
-    const out = document.getElementById('nearbyOut');
-    out.textContent = '搜尋中…';
+  // ----- 找附近 -----
+  document.getElementById('btnNearby').onclick = async ()=>{
+    const lat=parseFloat(document.getElementById('lat').value);
+    const lng=parseFloat(document.getElementById('lng').value);
+    const radius_km=parseFloat(document.getElementById('radius').value||'5');
+    const out=document.getElementById('nearbyOut'); out.textContent='搜尋中…';
     try{
-      const r = await fetch(`${API_BASE}/nearby`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json',...authHeader()},
-        body: JSON.stringify({lat, lng, radius_km})
-      });
-      const data = await r.json();
-      out.textContent = JSON.stringify(data, null, 2);
-    }catch(e){
-      out.textContent = `錯誤：${e.message || e}`;
-    }
+      const res=await fetch(`${API_BASE}/nearby`,{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({lat,lng,radius_km})});
+      const [ok,data]=await safeParse(res);
+      out.textContent = ok ? JSON.stringify(data,null,2) : `錯誤：${data.detail||'搜尋失敗'}`;
+    }catch(e){ out.textContent=`錯誤：${e.message||e}`; }
   };
 
-  document.getElementById('btnMatches').onclick = async () => {
-    const out = document.getElementById('matchOut');
-    out.textContent = '讀取中…';
+  // ----- 取得配對 -----
+  document.getElementById('btnMatches').onclick = async ()=>{
+    const out=document.getElementById('matchOut'); out.textContent='讀取中…';
     try{
-      const r = await fetch(`${API_BASE}/matches`, { headers:{...authHeader()} });
-      const data = await r.json();
-      out.textContent = JSON.stringify(data, null, 2);
-    }catch(e){
-      out.textContent = `錯誤：${e.message || e}`;
-    }
+      const res=await fetch(`${API_BASE}/matches`,{headers:{...authHeader()}});
+      const [ok,data]=await safeParse(res);
+      out.textContent = ok ? JSON.stringify(data,null,2) : `錯誤：${data.detail||'讀取失敗'}`;
+    }catch(e){ out.textContent=`錯誤：${e.message||e}`; }
   };
 
-  // 首次開頁先試一次連線
-  if (API_BASE) { ping(); }
+  // 首次開頁先測一次
+  if(API_BASE){ ping(); }
 </script>
 </body>
 </html>
