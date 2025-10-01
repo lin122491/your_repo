@@ -17,10 +17,10 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.exc import IntegrityError
 
-# ---------------- 設定 ----------------
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")   # 正式請改環境變數
+# ---------------- 基本設定 ----------------
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")  # 正式請改環境變數
 JWT_ALG = "HS256"
-ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7   # 7天
+ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 天
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dating.db")
 
@@ -32,9 +32,10 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 使用 PBKDF2-SHA256（避免 bcrypt 相容性問題）
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-# ---------------- Model ----------------
+# ---------------- Models ----------------
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -46,7 +47,7 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     __table_args__ = (UniqueConstraint("username", name="uq_username"),)
 
-# ---------------- DB 建表/熱補欄位 ----------------
+# ---------------- DB 建表 & 輕量遷移 ----------------
 def create_db():
     Base.metadata.create_all(bind=engine)
 
@@ -77,11 +78,14 @@ class SignupIn(BaseModel):
     username: str
     password: str
     email: Optional[EmailStr] = None
+
     @field_validator("email", mode="before")
     @classmethod
     def empty_to_none(cls, v):
-        if v is None: return None
-        if isinstance(v, str) and v.strip() == "": return None
+        if v is None:
+            return None
+        if isinstance(v, str) and v.strip() == "":
+            return None
         return v
 
 class LoginIn(BaseModel):
@@ -105,16 +109,21 @@ class NearbyIn(BaseModel):
     lng: float
     radius_km: float = 5.0
 
-# ---------------- App ----------------
+# ---------------- App 本體 ----------------
 app = FastAPI(title="Dating Prototype")
+
+# CORS：前端可能不同網域，先全開
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.exception_handler(Exception)
 async def all_exception_handler(_: Request, exc: Exception):
+    # 統一 500 格式，方便前端顯示
     return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
 
 def get_db() -> Session:
@@ -191,8 +200,12 @@ def me(request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
     user = current_user(db, token)
     return MeOut(
-        id=user.id, username=user.username, email=user.email,
-        lat=user.lat, lng=user.lng, updated_at=user.updated_at
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        lat=user.lat,
+        lng=user.lng,
+        updated_at=user.updated_at,
     )
 
 @app.post("/me/location")
@@ -238,7 +251,7 @@ def matches(request: Request, db: Session = Depends(get_db)):
     _ = current_user(db, token)
     return {"matches": []}
 
-# ---------------- 靜態檔案 / 首頁（避免白頁） ----------------
+# ---------------- 靜態檔案與首頁 ----------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -264,6 +277,6 @@ def index():
         return FileResponse(fp)
     return HTMLResponse(FALLBACK_HTML)
 
-# ---------------- 啟動前建表 + 遷移 ----------------
+# ---------------- 啟動前：建表 + 輕量遷移 ----------------
 create_db()
 migrate_sqlite_users_table()

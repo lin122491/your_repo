@@ -1,19 +1,12 @@
 ﻿services:
   - type: web
-    name: dating-prototype
+    name: your-repo
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:$PORT app:app
-    region: singapore
     plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.3
+        value: 3.12.5
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL
-        value: sqlite:////data/dating.db
-    disk:
-      name: db
-      mountPath: /data
-      sizeGB: 1

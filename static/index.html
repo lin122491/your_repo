@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>交友APP 前端（雲端自動偵測）</title>
+  <title>交友APP 前端（自動偵測 API）</title>
   <style>
     body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:#f7f7fb;margin:0;color:#222}
     .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
@@ -12,14 +12,20 @@
     .row{display:flex;gap:18px;flex-wrap:wrap}
     .col{flex:1 1 420px;min-width:320px}
     label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
-    input{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
-    input:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
     .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
     .btn:disabled{opacity:.6;cursor:not-allowed}
-    .btn.green{background:#0aa56b}.btn.gray{background:#e5e7eb;color:#111}.btn.red{background:#e63b3b}
-    .muted{color:#666;font-size:13px}.status{font-weight:700;padding:5px 9px;border-radius:999px}
-    .ok{background:#e6f7ef;color:#117a47}.bad{background:#fde8e8;color:#9b2226}
+    .btn.green{background:#0aa56b}
+    .btn.gray{background:#e5e7eb;color:#111}
+    .btn.red{background:#e63b3b}
+    .muted{color:#666;font-size:13px}
+    .status{font-weight:700;padding:5px 9px;border-radius:999px}
+    .ok{background:#e6f7ef;color:#117a47}
+    .bad{background:#fde8e8;color:#9b2226}
     pre{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:10px;padding:12px;font-size:13px;overflow:auto}
+    .log{font-size:12px;line-height:1.5;max-height:220px;overflow:auto;background:#fcfcff;border:1px dashed #d7d7e0;border-radius:10px;padding:8px}
+    code{background:#f1f5f9;padding:1px 4px;border-radius:6px}
   </style>
 </head>
 <body>
@@ -27,23 +33,33 @@
   <h1>交友APP 前端（原型）</h1>
 
   <div class="card">
-    <label>API 位置（預設同源；如果前端與後端不同網域，請貼上後端 URL）</label>
-    <input id="apiBase" placeholder="例如：https://your-repo.onrender.com">
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn" id="btnSaveApi">儲存 API 位址</button>
-      <button class="btn gray" id="btnUseSameOrigin">使用目前站台（同源）</button>
-      <button class="btn" id="btnPing">測試連線</button>
-      <span id="pingResult" class="muted"></span>
+    <div class="row">
+      <div class="col">
+        <label>API 位址（留空自動偵測；或貼上 Render 網址）</label>
+        <input id="apiBase" placeholder="例如：https://your-repo-xxxx.onrender.com">
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="btnSaveApi">儲存 API 位址</button>
+          <button class="btn gray" id="btnUseSameOrigin">使用目前站台</button>
+          <button class="btn" id="btnPing">測試連線</button>
+          <span id="pingResult" class="muted"></span>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          如果此頁由後端提供（網址像 <code>https://xxx.onrender.com/</code>），預設會使用同網域為 API。
+        </div>
+      </div>
+      <div class="col">
+        <label>診斷日誌</label>
+        <div class="log" id="log"></div>
+      </div>
     </div>
-    <div class="muted" style="margin-top:6px">提示：此頁由後端提供時，預設使用 <code>window.location.origin</code>。</div>
   </div>
 
   <div class="row">
     <div class="card col">
       <h3>註冊</h3>
       <label>用戶名</label><input id="su_username" autocomplete="username">
-      <label>密碼 (&ge;6)</label><input id="su_password" type="password" autocomplete="new-password">
-      <label>電子信箱（可空白）</label><input id="su_email" type="email" placeholder="可留空">
+      <label>密碼（≥6）</label><input id="su_password" type="password" autocomplete="new-password">
+      <label>電子信箱（可空白）</label><input id="su_email" type="email">
       <div style="margin-top:10px"><button class="btn" id="btnSignup">建立帳號</button></div>
       <div class="muted" id="su_msg" style="margin-top:8px"></div>
     </div>
@@ -53,12 +69,12 @@
       <label>用戶名</label><input id="li_username" autocomplete="username">
       <label>密碼</label><input id="li_password" type="password" autocomplete="current-password">
       <div style="margin-top:10px"><button class="btn green" id="btnLogin">登入</button></div>
-      <div class="muted" id="li_msg" style="margin-top:8px">登入成功會暫存 Token。</div>
+      <div class="muted" id="li_msg" style="margin-top:8px">登入成功後會儲存 Token（僅此頁可用）。</div>
     </div>
   </div>
 
   <div class="card">
-    <div style="display:flex;gap:10px;align-items:center">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <div>登入狀態：<span id="authStatus" class="status bad">未登入</span></div>
       <button class="btn gray" id="btnLogout">登出</button>
     </div>
@@ -68,23 +84,23 @@
     <div class="card col">
       <h3>我的資料</h3>
       <button class="btn" id="btnMe">取得 / 更新顯示</button>
-      <div class="muted" style="margin:10px 0">也可到 <code>/docs</code> 的 <code>/me</code> 更新更多欄位。</div>
+      <div class="muted" style="margin:10px 0">可在 Swagger 使用 <code>/me</code> 更新更多欄位。</div>
       <pre id="meOut">（尚無資料）</pre>
     </div>
 
     <div class="card col">
-      <h3>回報定位 & 搜附近</h3>
+      <h3>定位 & 附近</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn" id="btnGeo">自動定位（瀏覽器詢問授權）</button>
+        <button class="btn" id="btnGeoUpSearch">定位＋搜尋附近（5km）</button>
+      </div>
       <label>緯度</label><input id="lat" placeholder="例如 25.033964">
       <label>經度</label><input id="lng" placeholder="例如 121.564468">
       <label>半徑 (km)</label><input id="radius" value="5">
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" id="btnGeo">自動抓定位</button>
-        <button class="btn gray" id="btnWatch">持續追蹤</button>
-        <button class="btn red" id="btnStopWatch" disabled>停止追蹤</button>
         <button class="btn" id="btnUpdateLoc">回報定位</button>
         <button class="btn" id="btnNearby">找附近的人</button>
       </div>
-      <div class="muted" id="geoMsg" style="margin-top:8px">需 HTTPS 或本機（localhost/127.0.0.1）才能授權定位。</div>
       <pre id="nearbyOut">（尚無結果）</pre>
     </div>
   </div>
@@ -97,94 +113,201 @@
 </div>
 
 <script>
-  // === API Base：預設同源，可覆寫 ===
+  const logBox = document.getElementById('log');
+  function log(msg){ const t = new Date().toLocaleTimeString(); logBox.textContent += `[${t}] ${msg}\n`; logBox.scrollTop = logBox.scrollHeight; }
+
+  // -------- API Base：自動偵測 + 可覆寫 --------
   const apiInput = document.getElementById('apiBase');
   const pingResult = document.getElementById('pingResult');
-  let API_BASE = (localStorage.getItem('apiBase') ||
-                 (location.protocol.startsWith('http') ? location.origin : ''));
+
+  function sameOrigin(){ return window.location.origin; }
+  function loadApiBase(){
+    const saved = localStorage.getItem('apiBase');
+    if (saved) return saved;
+    if (location.protocol.startsWith('http')) return sameOrigin();
+    return '';
+  }
+  function setApiBase(base){
+    localStorage.setItem('apiBase', (base||'').trim());
+    apiInput.value = (base||'').trim();
+  }
+
+  let API_BASE = loadApiBase();
   apiInput.value = API_BASE;
-  document.getElementById('btnSaveApi').onclick = () => { localStorage.setItem('apiBase', apiInput.value.trim()); API_BASE = apiInput.value.trim(); ping(); };
-  document.getElementById('btnUseSameOrigin').onclick = () => { localStorage.setItem('apiBase', location.origin); API_BASE = location.origin; apiInput.value = API_BASE; ping(); };
+
+  document.getElementById('btnSaveApi').onclick = () => {
+    setApiBase(apiInput.value);
+    API_BASE = apiInput.value.trim();
+    ping();
+  };
+  document.getElementById('btnUseSameOrigin').onclick = () => {
+    const origin = sameOrigin();
+    setApiBase(origin);
+    API_BASE = origin;
+    ping();
+  };
+  document.getElementById('btnPing').onclick = ping;
 
   async function ping(){
+    if(!API_BASE){ pingResult.textContent = '尚未設定 API 位址'; return; }
     pingResult.textContent = '連線測試中…';
     try{
       const r = await fetch(`${API_BASE}/health`);
-      pingResult.innerHTML = r.ok ? `<span class="ok status">OK</span> ${API_BASE}` : `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
-    }catch{ pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`; }
+      if(r.ok){ pingResult.innerHTML = `<span class="ok status">OK</span> 已連線：${API_BASE}`; log(`健康檢查 OK`); }
+      else { pingResult.innerHTML = `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`; log(`健康檢查失敗：${r.status}`); }
+    }catch(e){ pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`; log(`連線錯誤：${e}`); }
   }
 
-  // === auth ===
-  const tokenKey='authToken', authStatus=document.getElementById('authStatus');
-  const setToken=t=>{ localStorage.setItem(tokenKey,t); refreshAuthStatus(); };
-  const getToken=()=> localStorage.getItem(tokenKey)||'';
-  const clearToken=()=>{ localStorage.removeItem(tokenKey); refreshAuthStatus(); };
-  const authHeader=()=> getToken()?{'Authorization':`Bearer ${getToken()}`}:{};
-  function refreshAuthStatus(){ if(getToken()){authStatus.textContent='已登入';authStatus.className='status ok';}else{authStatus.textContent='未登入';authStatus.className='status bad';} }
+  // -------- auth token --------
+  const authStatus = document.getElementById('authStatus');
+  const tokenKey = 'authToken';
+  const getToken = () => localStorage.getItem(tokenKey) || '';
+  const setToken = (t) => { localStorage.setItem(tokenKey, t); refreshAuthStatus(); }
+  const clearToken = () => { localStorage.removeItem(tokenKey); refreshAuthStatus(); }
+  function authHeader(){ const t = getToken(); return t ? { 'Authorization': `Bearer ${t}` } : {}; }
+  function refreshAuthStatus(){ if(getToken()){ authStatus.textContent = '已登入'; authStatus.className='status ok'; } else { authStatus.textContent='未登入'; authStatus.className='status bad'; } }
   refreshAuthStatus();
 
-  async function safeParse(res){ const txt=await res.text(); try{ return [res.ok, JSON.parse(txt)]; }catch{ return [res.ok, {detail:txt||`${res.status} ${res.statusText}` }]; } }
-
-  // === 註冊 / 登入 / 我 ===
-  document.getElementById('btnSignup').onclick = async ()=>{
-    const username=document.getElementById('su_username').value.trim();
-    const password=document.getElementById('su_password').value;
-    const email=(document.getElementById('su_email').value.trim()||null);
-    const msg=document.getElementById('su_msg'); msg.textContent='送出中…';
+  // -------- 註冊 / 登入 / 我 --------
+  document.getElementById('btnSignup').onclick = async () => {
+    const username = document.getElementById('su_username').value.trim();
+    const password = document.getElementById('su_password').value;
+    const email = document.getElementById('su_email').value.trim();
+    const msg = document.getElementById('su_msg');
+    msg.textContent = '送出中…';
     try{
-      const res=await fetch(`${API_BASE}/auth/signup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,email})});
-      const [ok,data]=await safeParse(res);
-      if(!ok) throw new Error(data.detail||'註冊失敗');
-      msg.textContent='註冊成功！請前往登入區登入。';
-    }catch(e){ msg.textContent=`失敗：${e.message||e}`; }
+      const r = await fetch(`${API_BASE}/auth/signup`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password, email})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(JSON.stringify(data));
+      msg.textContent = '註冊成功！請前往登入區登入。';
+      log(`註冊成功：${username}`);
+    }catch(e){ msg.textContent = `失敗：${e.message||e}`; log(`註冊失敗：${e}`); }
   };
 
-  document.getElementById('btnLogin').onclick = async ()=>{
-    const username=document.getElementById('li_username').value.trim();
-    const password=document.getElementById('li_password').value;
-    const msg=document.getElementById('li_msg'); msg.textContent='登入中…';
+  document.getElementById('btnLogin').onclick = async () => {
+    const username = document.getElementById('li_username').value.trim();
+    const password = document.getElementById('li_password').value;
+    const msg = document.getElementById('li_msg');
+    msg.textContent = '登入中…';
     try{
-      const res=await fetch(`${API_BASE}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-      const [ok,data]=await safeParse(res);
-      if(!ok) throw new Error(data.detail||'登入失敗');
-      setToken(data.access_token); msg.textContent='登入成功！';
-    }catch(e){ msg.textContent=`登入失敗：${e.message||e}`; }
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(JSON.stringify(data));
+      setToken(data.access_token);
+      msg.textContent = '登入成功！';
+      log(`登入成功：${username}`);
+    }catch(e){ msg.textContent = `登入失敗：${e.message||e}`; log(`登入失敗：${e}`); }
   };
 
-  document.getElementById('btnLogout').onclick = ()=> clearToken();
+  document.getElementById('btnLogout').onclick = () => { clearToken(); log('已登出'); };
 
-  document.getElementById('btnMe').onclick = async ()=>{
-    const out=document.getElementById('meOut'); out.textContent='讀取中…';
+  document.getElementById('btnMe').onclick = async () => {
+    const out = document.getElementById('meOut');
+    out.textContent = '讀取中…';
     try{
-      const res=await fetch(`${API_BASE}/me`,{headers:{...authHeader()}});
-      const [ok,data]=await safeParse(res);
-      out.textContent = ok ? JSON.stringify(data,null,2) : `錯誤：${data.detail||'取得失敗'}`;
-    }catch(e){ out.textContent=`錯誤：${e.message||e}`; }
+      const r = await fetch(`${API_BASE}/me`, { headers:{...authHeader()} });
+      const data = await r.json();
+      out.textContent = JSON.stringify(data, null, 2);
+      log('取得 /me 成功');
+    }catch(e){ out.textContent = `錯誤：${e.message||e}`; log(`讀取 /me 失敗：${e}`); }
   };
 
-  // === 定位：一次抓 / 追蹤 / 自動回報 ===
-  const geoMsg = document.getElementById('geoMsg');
-  function setLatLng(lat,lng){ document.getElementById('lat').value=lat??''; document.getElementById('lng').value=lng??''; }
-  const isSecure=()=> location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname);
-  function errTips(err){ if(!isSecure()) return '（需要 HTTPS 或本機）'; return ({1:'（你拒絕了定位權限）',2:'（無法取得位置，請稍後）',3:'（定位逾時）'})[err.code]||''; }
-  async function updateLocation(lat,lng){ try{ const r=await fetch(`${API_BASE}/me/location`,{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({lat,lng})}); return r.ok; }catch{return false;} }
+  // -------- Geolocation --------
+  async function getBrowserGeo(){
+    return new Promise((resolve, reject)=>{
+      if(!('geolocation' in navigator)) return reject('瀏覽器不支援定位');
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
+        err => reject(err.message || '定位失敗'),
+        {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+      );
+    });
+  }
 
-  document.getElementById('btnGeo').onclick=()=>{
-    if(!navigator.geolocation){ geoMsg.textContent='此瀏覽器不支援定位'; return; }
-    if(!isSecure()){ geoMsg.textContent='需要在 HTTPS 或本機環境使用定位'; return; }
-    geoMsg.textContent='定位中…（請在瀏覽器允許定位權限）';
-    navigator.geolocation.getCurrentPosition(async pos=>{
-      const {latitude,longitude}=pos.coords; setLatLng(latitude,longitude);
-      geoMsg.textContent=`已取得：${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-      if(getToken()){ const ok=await updateLocation(latitude,longitude); geoMsg.textContent += ok?'；已回報後端':'；回報後端失敗'; }
-    }, err=>{ geoMsg.textContent=`定位失敗：${err.message} ${errTips(err)}`; }, {enableHighAccuracy:true, timeout:10000, maximumAge:30000});
+  document.getElementById('btnGeo').onclick = async ()=>{
+    try{
+      const {lat, lng} = await getBrowserGeo();
+      document.getElementById('lat').value = lat;
+      document.getElementById('lng').value = lng;
+      alert('已取得定位座標');
+      log(`地理定位：${lat}, ${lng}`);
+    }catch(e){ alert('定位失敗：' + e); log('定位失敗：' + e); }
   };
 
-  let watchId=null, lastSentAt=0, lastLat=null, lastLng=null;
-  const havKm=(a,b,c,d)=>{const R=6371,toRad=x=>x*Math.PI/180;const d1=toRad(c-a),d2=toRad(d-b);const s=Math.sin(d1/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(d2/2)**2;return 2*R*Math.asin(Math.sqrt(s));};
-  async function maybeSend(lat,lng){ const now=Date.now(); const moved=(lastLat==null)?true:havKm(lat,lng,lastLat,lastLng)>=0.05; const timeok=now-lastSentAt>=10000; if(moved&&timeok&&getToken()){ const ok=await updateLocation(lat,lng); if(ok){lastSentAt=now; lastLat=lat; lastLng=lng;} } }
-  document.getElementById('btnWatch').onclick=()=>{
-    if(watchId) return;
-    if(!navigator.geolocation){ geoMsg.textContent='此瀏覽器不支援定位'; return; }
-    if(!isSecure()){ geoMsg.textContent='需要在 HTTPS 或本機使用定位'; return; }
-    geoMsg.textContent='開始追蹤定位…';
+  document.getElementById('btnGeoUpSearch').onclick = async ()=>{
+    try{
+      const {lat, lng} = await getBrowserGeo();
+      document.getElementById('lat').value = lat;
+      document.getElementById('lng').value = lng;
+      await updateLocation(lat, lng);
+      await nearbySearch(lat, lng, parseFloat(document.getElementById('radius').value||'5'));
+    }catch(e){ alert('定位或查詢失敗：' + e); log('定位或查詢失敗：' + e); }
+  };
+
+  // -------- 定位 / 附近 --------
+  async function updateLocation(lat, lng){
+    const r = await fetch(`${API_BASE}/me/location`, {
+      method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+      body: JSON.stringify({lat, lng})
+    });
+    if(!r.ok) throw new Error('回報定位失敗');
+    log(`已更新定位到後端：${lat}, ${lng}`);
+  }
+
+  async function nearbySearch(lat, lng, radius_km){
+    const out = document.getElementById('nearbyOut');
+    out.textContent = '搜尋中…';
+    const r = await fetch(`${API_BASE}/nearby`, {
+      method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+      body: JSON.stringify({lat, lng, radius_km})
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(JSON.stringify(data));
+    out.textContent = JSON.stringify(data, null, 2);
+    log(`附近搜尋完成，筆數：${data.count}`);
+  }
+
+  document.getElementById('btnUpdateLoc').onclick = async ()=>{
+    try{
+      const lat = parseFloat(document.getElementById('lat').value);
+      const lng = parseFloat(document.getElementById('lng').value);
+      await updateLocation(lat, lng);
+      alert('定位已更新');
+    }catch(e){ alert(e.message||e); }
+  };
+
+  document.getElementById('btnNearby').onclick = async ()=>{
+    try{
+      const lat = parseFloat(document.getElementById('lat').value);
+      const lng = parseFloat(document.getElementById('lng').value);
+      const radius_km = parseFloat(document.getElementById('radius').value || '5');
+      await nearbySearch(lat, lng, radius_km);
+    }catch(e){
+      document.getElementById('nearbyOut').textContent = `錯誤：${e.message||e}`;
+      log(`附近搜尋失敗：${e}`);
+    }
+  };
+
+  // -------- 配對（示範空） --------
+  document.getElementById('btnMatches').onclick = async ()=>{
+    const out = document.getElementById('matchOut');
+    out.textContent = '讀取中…';
+    try{
+      const r = await fetch(`${API_BASE}/matches`, { headers:{...authHeader()} });
+      const data = await r.json();
+      out.textContent = JSON.stringify(data, null, 2);
+      log('取得配對成功');
+    }catch(e){ out.textContent = `錯誤：${e.message||e}`; log('取得配對失敗：' + e); }
+  };
+
+  // 首次進頁：若已設定 API，自動 Ping 一次
+  if(API_BASE){ ping(); }
+</script>
+</body>
+</html>
