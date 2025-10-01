@@ -32,8 +32,6 @@
 <div class="wrap">
   <h1>遊戲配對網</h1>
 
-  <!-- 移除「API 位置」設定，改為自動同源 -->
-
   <div class="grid col2" style="margin-top:16px">
     <div class="card">
       <h3>註冊 / 登入</h3>
@@ -121,39 +119,52 @@
         <button class="btn" id="btnNearby">搜尋</button>
         <span id="nbMsg" class="muted"></span>
       </div>
-
       <div class="hr"></div>
       <div class="list" id="nearbyList"></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px">
+  <div class="card" id="myMatchesCard" style="margin-top:16px">
+    <h3 style="margin:0 0 8px">我的配對（點卡片開聊天室）</h3>
     <div class="row">
-      <h3 style="margin:0">我的配對</h3>
-      <button class="btn gray" id="btnRefreshMatches" style="margin-left:auto">重新整理</button>
+      <button class="btn gray" id="btnReloadMatches">重新整理</button>
     </div>
-    <div class="list" id="matchList" style="margin-top:8px"></div>
+    <div id="myMatches" class="list" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin:0 0 8px">聊天室</h3>
+    <div class="grid col2" style="grid-template-columns: 300px 1fr;">
+      <div>
+        <div class="row" style="margin-bottom:8px">
+          <button class="btn gray" id="btnReloadRooms">重新整理房間</button>
+        </div>
+        <div id="roomList" class="list" style="grid-template-columns: 1fr;"></div>
+        <div class="muted" style="margin-top:6px">（僅能由「我的配對」點選開啟 DM）</div>
+      </div>
+      <div>
+        <div id="chatHeader" class="muted" style="margin-bottom:8px">尚未選擇房間</div>
+        <div id="chatBox" class="card-sm" style="height:320px; overflow:auto; background:#fafafa"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="chatInput" placeholder="輸入訊息按 Enter 送出" style="flex:1">
+          <button class="btn ok" id="btnSendChat">送出</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-  // -------- API 基本：自動採用同源，不顯示任何設定 UI --------
+  // ===== API：同源
   const API_BASE = window.location.origin;
 
-  // -------- 通用工具 --------
-  const authStatus = document.getElementById('authStatus');
+  // ===== Auth 狀態
   const tokenKey = 'authToken';
-  const GENDER_LABEL = { male: '男', female: '女' };
-  const glabel = g => GENDER_LABEL[g] || (g ?? '');
-
+  const authStatus = document.getElementById('authStatus');
   function getToken(){ return localStorage.getItem(tokenKey) || ''; }
   function setToken(t){ localStorage.setItem(tokenKey, t); refreshAuth(); }
   function clearToken(){ localStorage.removeItem(tokenKey); refreshAuth(); }
-
-  function refreshAuth(){
-    if(getToken()){ authStatus.textContent = '已登入'; authStatus.className='pill'; }
-    else { authStatus.textContent = '未登入'; authStatus.className='pill'; }
-  }
+  function refreshAuth(){ authStatus.textContent = getToken() ? '已登入' : '未登入'; }
   refreshAuth();
 
   async function api(path, opt={}){
@@ -162,53 +173,49 @@
     if (!opt.headers['Content-Type'] && !(opt.body instanceof FormData)) {
       opt.headers['Content-Type'] = 'application/json';
     }
-    const t = getToken();
-    if (t) opt.headers['Authorization'] = `Bearer ${t}`;
+    const t = getToken(); if (t) opt.headers['Authorization'] = `Bearer ${t}`;
     const r = await fetch(url, opt);
     if (!r.ok) {
-      let err = await r.text();
-      try { const j = JSON.parse(err); err = j.detail || err; } catch{}
+      let err = await r.text(); try { err = JSON.parse(err).detail || err } catch(e){}
       throw new Error(err);
     }
     const ct = r.headers.get('content-type') || '';
-    if (ct.includes('application/json')) return r.json();
-    return r.text();
+    return ct.includes('application/json') ? r.json() : r.text();
   }
 
-  // -------- 登入 / 註冊 / 登出 --------
+  // ===== 登入 / 註冊 / 登出
   const authMsg = document.getElementById('authMsg');
-
   document.getElementById('btnLogin').onclick = async () => {
     authMsg.textContent = '登入中…';
     try{
-      const body = {
+      const r = await api('/auth/login', {method:'POST', body: JSON.stringify({
         username: document.getElementById('li_username').value.trim(),
         password: document.getElementById('li_password').value
-      };
-      const r = await api('/auth/login', {method:'POST', body: JSON.stringify(body)});
+      })});
       setToken(r.access_token);
       authMsg.textContent = '登入成功！';
-      autoLocate(true);          // 立即上報
-      setTimeout(loadMe, 300);   // 載入個人檔案
-      loadMatches();             // 載入配對
+      autoLocate(true);
+      setTimeout(loadMe, 200);
+      loadMyMatches();
+      cacheMeId();
+      loadMyChats();
     }catch(e){ authMsg.textContent = `登入失敗：${e.message}`; }
   };
-
   document.getElementById('btnSignup').onclick = async () => {
     authMsg.textContent = '註冊中…';
     try{
-      const body = {
+      await api('/auth/signup', {method:'POST', body: JSON.stringify({
         username: document.getElementById('li_username').value.trim(),
         password: document.getElementById('li_password').value
-      };
-      await api('/auth/signup', {method:'POST', body: JSON.stringify(body)});
+      })});
       authMsg.textContent = '註冊成功！請登入。';
     }catch(e){ authMsg.textContent = `失敗：${e.message}`; }
   };
-
   document.getElementById('btnLogout').onclick = () => { clearToken(); };
 
-  // -------- 個人檔案 --------
+  // ===== 我的資料
+  const pfMsg = document.getElementById('pfMsg');
+  function sexLabel(g){ return g==='male'?'男':(g==='female'?'女':''); }
   function fillMe(m){
     document.getElementById('pf_nickname').value = m.nickname || '';
     document.getElementById('pf_gender').value = m.gender || '';
@@ -216,16 +223,12 @@
     document.getElementById('pf_city').value = m.city || '';
     document.getElementById('pf_bio').value = m.bio || '';
     document.getElementById('pf_interests').value = (m.interests || []).join(', ');
+    if (m.lat!=null) document.getElementById('loc_lat').value = m.lat;
+    if (m.lng!=null) document.getElementById('loc_lng').value = m.lng;
   }
-
-  async function loadMe(){
-    const me = await api('/me');
-    fillMe(me);
-  }
-  document.getElementById('btnMe').onclick = () => loadMe();
-
-  const pfMsg = document.getElementById('pfMsg');
-  document.getElementById('btnSaveProfile').onclick = async () => {
+  async function loadMe(){ try{ const me = await api('/me'); fillMe(me); } catch{} }
+  document.getElementById('btnMe').onclick = loadMe;
+  document.getElementById('btnSaveProfile').onclick = async ()=>{
     pfMsg.textContent = '儲存中…';
     try{
       const body = {
@@ -242,22 +245,16 @@
     }catch(e){ pfMsg.textContent = `失敗：${e.message}`; }
   };
 
-  // -------- 定位（自動 & 手動） --------
+  // ===== 定位（自動 & 手動）
   const locMsg = document.getElementById('locMsg');
-  let locTimer = null;
-
   function setLatLng(lat,lng){
     if (lat!=null) document.getElementById('loc_lat').value = lat;
     if (lng!=null) document.getElementById('loc_lng').value = lng;
   }
-
   async function reportLocation(lat,lng){
-    try{
-      await api('/me/location', {method:'POST', body: JSON.stringify({lat,lng})});
-      locMsg.textContent = '已回報';
-    }catch(e){ locMsg.textContent = `回報失敗：${e.message}`; }
+    try{ await api('/me/location', {method:'POST', body: JSON.stringify({lat,lng})}); locMsg.textContent='已回報'; }
+    catch(e){ locMsg.textContent='回報失敗：'+e.message; }
   }
-
   async function autoLocate(reportNow=false){
     locMsg.textContent = '定位中…';
     if (!navigator.geolocation) { locMsg.textContent='瀏覽器不支援定位'; return; }
@@ -267,85 +264,152 @@
       setLatLng(lat,lng);
       locMsg.textContent = '已偵測';
       if (reportNow && getToken()) await reportLocation(lat,lng);
-    }, err=>{ locMsg.textContent = '定位失敗'; });
+    }, _=>{ locMsg.textContent = '定位失敗'; });
   }
-
   document.getElementById('btnAutoLoc').onclick = ()=>autoLocate(false);
   document.getElementById('btnReportLoc').onclick = async ()=>{
     const lat = parseFloat(document.getElementById('loc_lat').value);
     const lng = parseFloat(document.getElementById('loc_lng').value);
     if (getToken()) await reportLocation(lat,lng);
   };
+  // 2 分鐘自動回報
+  setInterval(()=>{ if (!getToken()) return;
+    navigator.geolocation && navigator.geolocation.getCurrentPosition(async pos=>{
+      const lat = +pos.coords.latitude.toFixed(6);
+      const lng = +pos.coords.longitude.toFixed(6);
+      setLatLng(lat,lng); await reportLocation(lat,lng);
+    }, _=>{});
+  }, 120000);
 
-  function startAutoReport(){
-    if (locTimer) clearInterval(locTimer);
-    locTimer = setInterval(async ()=>{
-      try{
-        if (!getToken()) return;
-        navigator.geolocation.getCurrentPosition(async pos=>{
-          const lat = +pos.coords.latitude.toFixed(6);
-          const lng = +pos.coords.longitude.toFixed(6);
-          setLatLng(lat,lng);
-          await reportLocation(lat,lng);
-        }, _=>{});
-      }catch(_){}
-    }, 120000); // 2分鐘
-  }
-  startAutoReport();
-
-  // -------- 附近配對 --------
+  // ===== 附近
   const nbMsg = document.getElementById('nbMsg');
   const nearbyList = document.getElementById('nearbyList');
-
   function taglist(arr){ arr = arr||[]; return arr.map(t=>`<span class="pill">${t}</span>`).join(''); }
-  function card(u){
-    const gtxt = u.gender_label || glabel(u.gender);
-    const age = (u.age!=null? u.age : '');
-    const city = u.city || '';
-    const dist = (u.distance_km!=null? `${u.distance_km} km` : '');
+  function personCard(u){
     const nick = u.nickname || u.username;
+    const gtxt = u.gender==='male'?'男':(u.gender==='female'?'女':'');
+    const age = (u.age!=null? `・${u.age}歲` : '');
+    const city = u.city ? `・${u.city}` : '';
+    const dist = (u.distance_km!=null? `・${u.distance_km} km` : '');
     const bio = u.bio || '（尚未撰寫自我介紹）';
     return `
       <div class="card-sm">
         <div class="title">${nick}</div>
-        <div class="muted">${gtxt}${age!==''? '・'+age : ''}・${city}・${dist}</div>
+        <div class="muted">${gtxt}${age}${city}${dist}</div>
         <div style="margin:6px 0">${taglist(u.interests)}</div>
         <div class="muted" style="white-space:pre-wrap">${bio}</div>
       </div>`;
   }
-
   async function nearby(){
-    nbMsg.textContent = '搜尋中…';
-    nearbyList.innerHTML = '';
+    nbMsg.textContent='搜尋中…'; nearbyList.innerHTML='';
     try{
       const body = {
         radius_km: parseFloat(document.getElementById('loc_radius').value || '100'),
-        gender: document.getElementById('nb_gender').value,
+        gender: document.getElementById('nb_gender').value || null,
         min_age: document.getElementById('nb_min').value ? +document.getElementById('nb_min').value : null,
         max_age: document.getElementById('nb_max').value ? +document.getElementById('nb_max').value : null,
-        interest: document.getElementById('nb_interest').value
+        interest: document.getElementById('nb_interest').value || null
       };
       const r = await api('/nearby', {method:'POST', body: JSON.stringify(body)});
       nbMsg.textContent = `找到 ${r.total} 位`;
-      nearbyList.innerHTML = r.users.map(card).join('');
+      nearbyList.innerHTML = r.users.map(personCard).join('');
     }catch(e){ nbMsg.textContent = `失敗：${e.message}`; }
   }
-  document.getElementById('btnNearby').onclick = ()=>nearby();
+  document.getElementById('btnNearby').onclick = nearby;
 
-  // -------- 我的配對 --------
-  const matchList = document.getElementById('matchList');
-  async function loadMatches(){
-    matchList.innerHTML = '';
-    try{ const r = await api('/matches'); matchList.innerHTML = r.users.map(card).join(''); }
-    catch(e){ matchList.innerHTML = `<div class="muted">${e.message}</div>`; }
+  // ===== 我的配對（點卡片開 DM）
+  const myMatchesEl = document.getElementById('myMatches');
+  function matchCard(m){
+    const nick = m.nickname || m.username;
+    const g = m.gender==='male'?'男':(m.gender==='female'?'女':'');
+    const age = (m.age!=null? `${m.age}歲` : '');
+    const city = m.city || '';
+    const bio = m.bio || '（尚未撰寫自我介紹）';
+    const tags = (m.interests || []).map(t=>`<span class="pill">${t}</span>`).join('');
+    return `
+      <div class="card-sm" data-uid="${m.id}" style="cursor:pointer" onclick="openDM(${m.id})">
+        <div class="title">${nick}</div>
+        <div class="muted">${g}${age? '・'+age : ''}${city? '・'+city : ''}${m.distance_km!=null? '・'+m.distance_km+' km':''}</div>
+        <div style="margin:6px 0">${tags}</div>
+        <div class="muted" style="white-space:pre-wrap">${bio}</div>
+      </div>`;
   }
-  document.getElementById('btnRefreshMatches').onclick = ()=>loadMatches();
+  async function loadMyMatches(){
+    try{
+      const data = await api('/matches');
+      const arr = data.matches || [];
+      myMatchesEl.innerHTML = arr.length ? arr.map(matchCard).join('') : `<div class="muted">目前尚無配對</div>`;
+    }catch(e){
+      myMatchesEl.innerHTML = `<div class="muted">載入失敗：${e.message}</div>`;
+    }
+  }
+  document.getElementById('btnReloadMatches').onclick = loadMyMatches;
 
-  // 預設：如果已登入，自動載入資料
+  // ===== 聊天室（只能由 openDM 開啟）
+  const roomListEl = document.getElementById('roomList');
+  const chatBox = document.getElementById('chatBox');
+  const chatHeader = document.getElementById('chatHeader');
+  const chatInput = document.getElementById('chatInput');
+  let currentRoomId = null, ws = null, userIdCache = null;
+
+  async function cacheMeId(){ try{ const me = await api('/me'); userIdCache = me.id; } catch{} }
+
+  function roomItem(r){
+    const title = (r.members||[]).map(m=>m.nickname||m.username).join('、') || `#${r.room_id}`;
+    const last = r.last_message ? r.last_message.content : '（尚無訊息）';
+    // 只顯示，不提供點擊開啟
+    return `<div class="card-sm"><div class="title">${title}</div><div class="muted">${last}</div></div>`;
+  }
+  async function loadMyChats(){
+    try{ const rooms = await api('/chats/my'); roomListEl.innerHTML = rooms.map(roomItem).join(''); }
+    catch(e){ roomListEl.innerHTML = `<div class="muted">${e.message}</div>`; }
+  }
+  document.getElementById('btnReloadRooms').onclick = loadMyChats;
+
+  async function openDM(peerId){
+    try{
+      const res = await api('/chats/open_dm', {method:'POST', body: JSON.stringify({ peer_id: peerId })});
+      await loadMyChats();
+      openRoom(res.room_id);
+    }catch(e){ alert('無法開啟聊天室：'+e.message); }
+  }
+
+  async function openRoom(roomId){
+    if (ws){ try{ws.close()}catch{} ws = null; }
+    currentRoomId = roomId;
+    chatBox.innerHTML = '載入中…';
+    const his = await api(`/chats/${roomId}/history`);
+    chatBox.innerHTML = '';
+    for (const m of his.messages) appendMsg(m, false);
+    chatHeader.textContent = `房間 #${roomId}`;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws/chat/${roomId}?token=${encodeURIComponent(getToken())}`);
+    ws.onmessage = e => { const data = JSON.parse(e.data); if (data.type === 'msg') appendMsg(data, true); };
+  }
+
+  function escapeHTML(s){ return (s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  function appendMsg(m, scroll=true){
+    const who = (m.sender_id === userIdCache ? '我' : `#${m.sender_id}`);
+    const el = document.createElement('div');
+    el.className = 'card-sm'; el.style.marginBottom = '6px';
+    el.innerHTML = `<div class="muted">${who}・${(m.created_at||'').replace('T',' ').slice(0,19)}</div>
+                    <div style="white-space:pre-wrap">${escapeHTML(m.content)}</div>`;
+    chatBox.appendChild(el);
+    if (scroll) chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  document.getElementById('btnSendChat').onclick = sendChat;
+  chatInput.addEventListener('keydown', e=>{ if (e.key==='Enter') sendChat(); });
+  function sendChat(){
+    const txt = chatInput.value.trim();
+    if (!txt || !ws || ws.readyState!==1) return;
+    ws.send(JSON.stringify({type:'msg', content: txt}));
+    chatInput.value = '';
+  }
+
+  // ===== 初始：若已登入，載入資料
   if (getToken()){
-    loadMe();
-    loadMatches();
-    autoLocate(true);
+    loadMe(); loadMyMatches(); cacheMeId(); loadMyChats(); autoLocate(true);
   }
 </script>
 </body>
