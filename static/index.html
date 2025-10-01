@@ -3,53 +3,63 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>交友APP（表單配對）</title>
+  <title>交友APP（自動回報定位＋配對卡片）</title>
   <style>
-    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:#f7f7fb;margin:0;color:#222}
-    .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+    :root{--bg:#f7f7fb;--card:#fff;--text:#222;--muted:#666;--primary:#2962ff;--ok:#0aa56b;--warn:#e63b3b;--bd:#d7d7e0}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:var(--bg);margin:0;color:var(--text)}
+    .wrap{max-width:1120px;margin:32px auto;padding:0 16px}
     h1{font-size:28px;margin:0 0 16px}
-    .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:18px 0}
+    h3{margin:0 0 10px}
+    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:18px 0}
     .row{display:flex;gap:18px;flex-wrap:wrap}
     .col{flex:1 1 420px;min-width:320px}
     label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
-    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
-    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
-    .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-    .btn.green{background:#0aa56b}
-    .btn.gray{background:#e5e7eb;color:#111}
-    .btn.red{background:#e63b3b}
-    .muted{color:#666;font-size:13px}
+    input,select,textarea{width:100%;border:1px solid var(--bd);border-radius:10px;padding:10px 12px;font-size:15px;outline:none;background:#fff}
+    input:focus,textarea:focus,select:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+    .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:var(--primary);color:#fff;cursor:pointer;font-weight:600}
+    .btn.green{background:var(--ok)} .btn.gray{background:#e5e7eb;color:#111} .btn.red{background:var(--warn)}
+    .muted{color:var(--muted);font-size:13px}
     .status{font-weight:700;padding:5px 9px;border-radius:999px}
-    .ok{background:#e6f7ef;color:#117a47}
-    .bad{background:#fde8e8;color:#9b2226}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+    .ok{background:#e6f7ef;color:#117a47} .bad{background:#fde8e8;color:#9b2226}
     pre{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:10px;padding:12px;font-size:13px;overflow:auto}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;margin:2px}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;margin:2px;font-size:12px}
+    /* 配對卡片 */
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+    .match-card{background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+    .match-top{display:flex;justify-content:space-between;align-items:flex-start}
+    .match-name{font-weight:700}
+    .badge{font-size:12px;border-radius:999px;background:#f1f5f9;color:#111;padding:2px 8px;margin-left:6px}
+    .bio{color:#333;white-space:pre-wrap}
+    .small{font-size:13px;color:#555}
+    .row-mini{display:flex;flex-wrap:wrap;gap:8px}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>交友APP（表單配對）</h1>
+  <h1>交友APP（自動回報定位＋配對卡片）</h1>
 
   <div class="card">
     <label>API 位置（可留空自動同源，或貼上 Render 網址）</label>
-    <input id="apiBase" placeholder="例如：https://your-repo-xxxx.onrender.com">
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+    <input id="apiBase" placeholder="例：https://your-repo-xxxx.onrender.com">
+    <div class="controls" style="margin-top:8px">
       <button class="btn" id="btnSaveApi">儲存 API 位址</button>
       <button class="btn gray" id="btnUseSameOrigin">使用目前站台（同源）</button>
       <button class="btn" id="btnPing">測試連線</button>
       <span id="pingResult" class="muted"></span>
+    </div>
+    <div class="muted" style="margin-top:6px">
+      若此頁是後端直接提供（網址像 <code>https://xxx.onrender.com/</code>），預設會自動使用該網域。
     </div>
   </div>
 
   <div class="row">
     <div class="card col">
       <h3>註冊 / 登入</h3>
-      <label>用戶名</label><input id="username">
-      <label>密碼</label><input id="password" type="password">
-      <div style="margin-top:8px;display:flex;gap:8px">
+      <label>用戶名</label><input id="username" autocomplete="username">
+      <label>密碼</label><input id="password" type="password" autocomplete="current-password">
+      <div class="controls" style="margin-top:8px">
         <button class="btn" id="btnSignup">註冊</button>
         <button class="btn green" id="btnLogin">登入</button>
         <button class="btn gray" id="btnLogout">登出</button>
@@ -66,7 +76,7 @@
   </div>
 
   <div class="card">
-    <h3>我的個人檔案（僅：暱稱、性別、生日、自介、興趣、城市）</h3>
+    <h3>我的個人檔案（暱稱 / 性別 / 生日 / 自介 / 興趣 / 城市）</h3>
     <div class="row">
       <div class="col">
         <label>暱稱</label><input id="pf_display_name">
@@ -80,15 +90,14 @@
         <label>生日</label><input id="pf_birthday" type="date">
       </div>
       <div class="col">
-        <label>自介</label><textarea id="pf_bio" rows="4"></textarea>
-        <label>興趣（以逗號分隔；英文將自動轉大寫，中文保留）</label>
-        <input id="pf_interests" placeholder="例如：LOL, VALORANT, 魔物獵人, 動森">
-        <label>城市</label><input id="pf_city" placeholder="例如：台北市">
+        <label>自介</label><textarea id="pf_bio" rows="4" placeholder="介紹一下自己～"></textarea>
+        <label>興趣（逗號分隔；英文自動轉大寫，中文保留）</label><input id="pf_interests" placeholder="LOL, VALORANT, 魔物獵人">
+        <label>城市</label><input id="pf_city" placeholder="台北市">
       </div>
     </div>
-    <div style="margin-top:8px;display:flex;gap:8px">
-      <button class="btn" id="btnProfileLoad">讀取我的個人檔案</button>
-      <button class="btn green" id="btnProfileSave">儲存個人檔案</button>
+    <div class="controls" style="margin-top:8px">
+      <button class="btn" id="btnProfileLoad">讀取</button>
+      <button class="btn green" id="btnProfileSave">儲存</button>
       <span class="muted" id="pf_msg"></span>
     </div>
   </div>
@@ -96,27 +105,23 @@
   <div class="row">
     <div class="card col">
       <h3>定位</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <div style="flex:1">
+      <div class="row">
+        <div class="col">
           <label>緯度</label><input id="lat" placeholder="25.033964">
         </div>
-        <div style="flex:1">
+        <div class="col">
           <label>經度</label><input id="lng" placeholder="121.564468">
         </div>
-        <div style="flex:1">
-          <label>半徑（公里）</label><input id="radius" value="5">
+        <div class="col">
+          <label>半徑（公里）</label><input id="radius" value="100">
         </div>
       </div>
-      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" id="btnGeo">自動偵測定位</button>
-        <button class="btn" id="btnUpdateLoc">回報定位</button>
-      </div>
-      <div class="muted" id="locMsg" style="margin-top:8px"></div>
+      <div class="muted" id="locMsg" style="margin-top:8px">登入後會自動偵測定位並回報。</div>
     </div>
 
     <div class="card col">
       <h3>附近（表單勾選配對）</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="controls">
         <select id="f_gender">
           <option value="">性別不限</option>
           <option value="male">男性</option>
@@ -129,12 +134,14 @@
         <button class="btn" id="btnNearby">搜尋</button>
       </div>
       <div style="margin-top:10px;max-height:330px;overflow:auto">
-        <table id="nearbyTbl">
-          <thead><tr><th>選</th><th>使用者</th><th>暱稱/性別/年齡</th><th>城市</th><th>距離km</th><th>興趣</th></tr></thead>
+        <table id="nearbyTbl" style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr><th>選</th><th>使用者</th><th>暱稱/性別/年齡</th><th>城市</th><th>距離km</th><th>興趣</th></tr>
+          </thead>
           <tbody></tbody>
         </table>
       </div>
-      <div style="margin-top:8px;display:flex;gap:8px">
+      <div class="controls" style="margin-top:8px">
         <button class="btn green" id="btnLikeBatch">對勾選的人按讚</button>
         <span id="nearbyMsg" class="muted"></span>
       </div>
@@ -142,9 +149,15 @@
   </div>
 
   <div class="card">
-    <h3>我的配對</h3>
-    <button class="btn" id="btnMatches">取得配對列表</button>
-    <pre id="matchOut">（尚無配對）</pre>
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <h3 style="margin:0">我的配對</h3>
+      <div class="controls">
+        <button class="btn" id="btnMatches">重新整理</button>
+        <span id="matchCount" class="muted"></span>
+      </div>
+    </div>
+    <!-- 新：卡片式配對清單 -->
+    <div id="matchList" class="grid" style="margin-top:10px"></div>
   </div>
 </div>
 
@@ -152,42 +165,94 @@
   // ---------- API Base ----------
   const apiInput = document.getElementById('apiBase');
   const pingResult = document.getElementById('pingResult');
-
   function sameOrigin(){ return window.location.origin; }
   function loadApiBase(){
-    const saved = localStorage.getItem('apiBase');
-    if(saved) return saved;
+    const s = localStorage.getItem('apiBase');
+    if (s) return s;
     if (location.protocol === 'http:' || location.protocol === 'https:') return sameOrigin();
     return '';
   }
   function setApiBase(v){ localStorage.setItem('apiBase', v.trim()); apiInput.value = v.trim(); }
   let API_BASE = loadApiBase(); apiInput.value = API_BASE;
-
   document.getElementById('btnSaveApi').onclick = ()=>{ setApiBase(apiInput.value||''); API_BASE = apiInput.value.trim(); ping(); };
   document.getElementById('btnUseSameOrigin').onclick = ()=>{ const o=sameOrigin(); setApiBase(o); API_BASE=o; ping(); };
-
   async function ping(){
-    pingResult.textContent = '連線測試中…';
+    pingResult.textContent='連線測試中…';
     try{
       const r = await fetch(`${API_BASE}/health`);
-      pingResult.innerHTML = r.ok ? `<span class="ok status">OK</span> 已連線：${API_BASE}` :
-        `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
-    }catch{ pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`; }
+      pingResult.innerHTML = r.ok ? `<span class="ok status">OK</span> 已連線：${API_BASE}`
+                                  : `<span class="bad status">失敗</span> ${r.status} ${r.statusText}`;
+    }catch{
+      pingResult.innerHTML = `<span class="bad status">失敗</span> 無法連線 ${API_BASE}`;
+    }
   }
-  document.getElementById('btnPing').onclick = ping;
 
-  // ---------- Auth ----------
+  // ---------- Token & 包裝 fetch ----------
   const tokenKey='authToken', authStatus=document.getElementById('authStatus'), authMsg=document.getElementById('authMsg');
-  const getToken=()=>localStorage.getItem(tokenKey)||''; const setToken=t=>{localStorage.setItem(tokenKey,t);refreshAuth();}; const clearToken=()=>{localStorage.removeItem(tokenKey);refreshAuth();};
-  const authHeader=()=> getToken()? {'Authorization':`Bearer ${getToken()}`} : {};
+  const getToken=()=>localStorage.getItem(tokenKey)||'';
+  const setToken=t=>{localStorage.setItem(tokenKey,t);refreshAuth();};
+  const clearToken=()=>{localStorage.removeItem(tokenKey);refreshAuth();};
   function refreshAuth(){ if(getToken()){authStatus.textContent='已登入';authStatus.className='status ok';} else {authStatus.textContent='未登入';authStatus.className='status bad';} }
+  async function apiFetch(path, opts={}){
+    const headers = opts.headers || {};
+    const t = getToken(); if (t) headers['Authorization'] = `Bearer ${t}`;
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+    const r = await fetch(`${API_BASE}${path}`, {...opts, headers});
+    if (r.status === 401){
+      clearToken();
+      throw new Error('憑證已失效，請重新登入');
+    }
+    return r;
+  }
   refreshAuth();
 
+  // ---------- 自動定位 & 回報 ----------
+  const locMsg = document.getElementById('locMsg');
+  const latInput = document.getElementById('lat');
+  const lngInput = document.getElementById('lng');
+
+  async function reportLocation(lat,lng){
+    try{
+      const r = await apiFetch('/me/location',{method:'POST', body: JSON.stringify({lat,lng})});
+      if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||r.statusText); }
+      if(locMsg) locMsg.textContent = '定位已自動回報';
+    }catch(e){
+      if(locMsg) locMsg.textContent = '定位回報失敗：'+e.message;
+    }
+  }
+  function autoGeoAndReport(){
+    if(!getToken()) return; // 未登入不回報
+    if(!navigator.geolocation){ if(locMsg) locMsg.textContent='此瀏覽器不支援定位'; return; }
+    if(locMsg) locMsg.textContent='正在自動偵測定位…';
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        const {latitude, longitude} = pos.coords;
+        if(latInput) latInput.value = latitude.toFixed(6);
+        if(lngInput) lngInput.value = longitude.toFixed(6);
+        // 若半徑沒填，預設 100
+        const r = document.getElementById('radius');
+        if (r && (!r.value || Number(r.value) <= 0)) r.value = '100';
+        reportLocation(latitude, longitude);
+      },
+      err=>{ if(locMsg) locMsg.textContent='定位失敗：'+err.message; },
+      {enableHighAccuracy:true, timeout:10000, maximumAge:60000}
+    );
+  }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(API_BASE) ping();
+    // 半徑預設 100
+    const r = document.getElementById('radius');
+    if (r && (!r.value || Number(r.value) <= 0)) r.value = '100';
+    if(getToken()) autoGeoAndReport();
+  });
+
+  // ---------- 註冊 / 登入 / 我 ----------
   document.getElementById('btnSignup').onclick = async ()=>{
     const username=document.getElementById('username').value.trim();
     const password=document.getElementById('password').value;
     try{
-      const r = await fetch(`${API_BASE}/auth/signup`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const r = await apiFetch('/auth/signup',{method:'POST', body: JSON.stringify({username,password})});
       const d = await r.json();
       if(!r.ok) throw new Error(d.detail||r.statusText);
       authMsg.textContent='註冊成功，請登入。';
@@ -198,55 +263,46 @@
     const username=document.getElementById('username').value.trim();
     const password=document.getElementById('password').value;
     try{
-      const r = await fetch(`${API_BASE}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const r = await apiFetch('/auth/login',{method:'POST', body: JSON.stringify({username,password})});
       const d = await r.json();
       if(!r.ok) throw new Error(d.detail||r.statusText);
-      setToken(d.access_token); authMsg.textContent='登入成功';
+      setToken(d.access_token);
+      authMsg.textContent='登入成功，正在自動回報定位…';
+      autoGeoAndReport();
+      loadMatches(); // 登入就抓配對
     }catch(e){ authMsg.textContent='登入失敗：'+e.message; }
   };
-  document.getElementById('btnLogout').onclick = ()=>{ clearToken(); authMsg.textContent='已登出'; };
+
+  document.getElementById('btnLogout').onclick = ()=>{ clearToken(); authMsg.textContent='已登出'; document.getElementById('matchList').innerHTML=''; document.getElementById('matchCount').textContent=''; };
 
   document.getElementById('btnMe').onclick = async ()=>{
     const out=document.getElementById('meOut'); out.textContent='讀取中…';
     try{
-      const r = await fetch(`${API_BASE}/me`,{headers:{...authHeader()}});
-      const d = await r.json();
+      const r = await apiFetch('/me'); const d = await r.json();
       out.textContent = JSON.stringify(d,null,2);
-    }catch(e){ out.textContent='錯誤：'+(e.message||e); }
+    }catch(e){ out.textContent='錯誤：'+e.message; }
   };
 
-  // ---------- Profile ----------
+  // ---------- 個人檔案 ----------
   const pf = {
     display_name: document.getElementById('pf_display_name'),
     gender: document.getElementById('pf_gender'),
     birthday: document.getElementById('pf_birthday'),
     bio: document.getElementById('pf_bio'),
     interests: document.getElementById('pf_interests'),
-    city: document.getElementById('pf_city'),
+    city: document.getElementById('pf_city')
   };
-  const pfMsg = document.getElementById('pf_msg');
-
-  function parseInterests(str){
-    // 逗號分隔，英文字轉大寫、中文保留
-    if(!str) return [];
-    return Array.from(new Set(str.split(',').map(s=>s.trim()).filter(Boolean).map(x=>{
-      return /[A-Za-z]/.test(x) ? x.toUpperCase() : x;
-    })));
-  }
-  function joinInterests(arr){ return (arr||[]).join(', '); }
+  const pfMsg=document.getElementById('pf_msg');
+  const parseInterests = s => !s?[]:Array.from(new Set(s.split(',').map(x=>x.trim()).filter(Boolean).map(x=>/[A-Za-z]/.test(x)?x.toUpperCase():x)));
+  const joinInterests = arr => (arr||[]).join(', ');
 
   document.getElementById('btnProfileLoad').onclick = async ()=>{
     pfMsg.textContent='讀取中…';
     try{
-      const r = await fetch(`${API_BASE}/me/profile`, {headers:{...authHeader()}});
-      const d = await r.json();
+      const r = await apiFetch('/me/profile'); const d = await r.json();
       if(!r.ok) throw new Error(d.detail||r.statusText);
-      pf.display_name.value = d.display_name || '';
-      pf.gender.value = (d.gender||'');
-      pf.birthday.value = d.birthday || '';
-      pf.bio.value = d.bio || '';
-      pf.interests.value = joinInterests(d.interests||[]);
-      pf.city.value = d.city || '';
+      pf.display_name.value = d.display_name||''; pf.gender.value=d.gender||''; pf.birthday.value=d.birthday||'';
+      pf.bio.value=d.bio||''; pf.interests.value=joinInterests(d.interests||[]); pf.city.value=d.city||'';
       pfMsg.textContent='已載入';
     }catch(e){ pfMsg.textContent='失敗：'+e.message; }
   };
@@ -254,53 +310,23 @@
   document.getElementById('btnProfileSave').onclick = async ()=>{
     pfMsg.textContent='儲存中…';
     try{
-      const body = {
-        display_name: pf.display_name.value.trim() || null,
-        gender: pf.gender.value || null,
-        birthday: pf.birthday.value || null,
-        bio: pf.bio.value || null,
-        interests: parseInterests(pf.interests.value),
-        city: pf.city.value.trim() || null
-      };
-      const r = await fetch(`${API_BASE}/me/profile`, {method:'PUT', headers:{'Content-Type':'application/json',...authHeader()}, body: JSON.stringify(body)});
-      const d = await r.json();
-      if(!r.ok) throw new Error(d.detail||r.statusText);
+      const body={display_name:pf.display_name.value.trim()||null, gender:pf.gender.value||null,
+                  birthday:pf.birthday.value||null, bio:pf.bio.value||null,
+                  interests:parseInterests(pf.interests.value), city:pf.city.value.trim()||null};
+      const r = await apiFetch('/me/profile',{method:'PUT', body: JSON.stringify(body)});
+      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
       pfMsg.textContent='已儲存';
     }catch(e){ pfMsg.textContent='失敗：'+e.message; }
   };
 
-  // ---------- 定位 ----------
-  const locMsg=document.getElementById('locMsg');
-  document.getElementById('btnGeo').onclick = ()=>{
-    if(!navigator.geolocation){ locMsg.textContent='此瀏覽器不支援 Geolocation'; return; }
-    locMsg.textContent='偵測中…';
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const {latitude, longitude} = pos.coords;
-      document.getElementById('lat').value = latitude.toFixed(6);
-      document.getElementById('lng').value = longitude.toFixed(6);
-      locMsg.textContent='已填入座標';
-    }, err=>{ locMsg.textContent='失敗：'+err.message; });
-  };
-
-  document.getElementById('btnUpdateLoc').onclick = async ()=>{
-    locMsg.textContent = '回報中…';
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lng = parseFloat(document.getElementById('lng').value);
-    try{
-      const r = await fetch(`${API_BASE}/me/location`, {method:'POST', headers:{'Content-Type':'application/json',...authHeader()}, body: JSON.stringify({lat,lng})});
-      if(!r.ok){ const d=await r.json(); throw new Error(d.detail||r.statusText); }
-      locMsg.textContent='已回報';
-    }catch(e){ locMsg.textContent='失敗：'+e.message; }
-  };
-
-  // ---------- 附近 & 表單配對 ----------
-  const nearbyTbl = document.querySelector('#nearbyTbl tbody');
-  const nearbyMsg = document.getElementById('nearbyMsg');
+  // ---------- 附近 & 批次按讚 ----------
+  const nearbyTbl=document.querySelector('#nearbyTbl tbody');
+  const nearbyMsg=document.getElementById('nearbyMsg');
 
   function renderNearby(users){
-    nearbyTbl.innerHTML = '';
+    nearbyTbl.innerHTML='';
     for(const u of users){
-      const tr = document.createElement('tr');
+      const tr=document.createElement('tr');
       tr.innerHTML = `
         <td><input type="checkbox" class="pick" value="${u.username}"></td>
         <td>${u.username}</td>
@@ -315,52 +341,119 @@
 
   document.getElementById('btnNearby').onclick = async ()=>{
     nearbyMsg.textContent='搜尋中…';
-    const lat = parseFloat(document.getElementById('lat').value);
-    const lng = parseFloat(document.getElementById('lng').value);
-    const radius_km = parseFloat(document.getElementById('radius').value || '5');
-    const gender = document.getElementById('f_gender').value || null;
-    const min_age = document.getElementById('f_min_age').value || null;
-    const max_age = document.getElementById('f_max_age').value || null;
-    const interests = parseInterests(document.getElementById('f_interests').value);
-
-    const body = {lat, lng, radius_km, gender, min_age: min_age?Number(min_age):null, max_age: max_age?Number(max_age):null, interests};
+    const lat=parseFloat(document.getElementById('lat').value);
+    const lng=parseFloat(document.getElementById('lng').value);
+    let radius_km=Number(document.getElementById('radius').value);
+    if(!Number.isFinite(radius_km)||radius_km<=0) radius_km=100; // 預設 100
+    const gender=document.getElementById('f_gender').value||null;
+    const min_age=document.getElementById('f_min_age').value||null;
+    const max_age=document.getElementById('f_max_age').value||null;
+    const interests=parseInterests(document.getElementById('f_interests').value);
     try{
-      const r = await fetch(`${API_BASE}/nearby`, {method:'POST', headers:{'Content-Type':'application/json',...authHeader()}, body: JSON.stringify(body)});
-      const d = await r.json();
-      if(!r.ok) throw new Error(d.detail||r.statusText);
-      renderNearby(d.users||[]);
-      nearbyMsg.textContent = `找到 ${d.users.length} 位`;
+      const r = await apiFetch('/nearby',{method:'POST', body: JSON.stringify({
+        lat,lng,radius_km,
+        gender,
+        min_age: min_age?Number(min_age):null,
+        max_age: max_age?Number(max_age):null,
+        interests
+      })});
+      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
+      renderNearby(d.users||[]); nearbyMsg.textContent=`找到 ${d.users?.length||0} 位`;
     }catch(e){ nearbyMsg.textContent='失敗：'+e.message; }
   };
 
   document.getElementById('btnLikeBatch').onclick = async ()=>{
-    const picks = Array.from(document.querySelectorAll('.pick:checked')).map(x=>x.value);
-    if(picks.length===0){ nearbyMsg.textContent='請先勾選人員'; return; }
-    nearbyMsg.textContent='送出中…';
-    let ok=0, match=0, fail=0;
+    const picks=[...document.querySelectorAll('.pick:checked')].map(x=>x.value);
+    if(!picks.length){ nearbyMsg.textContent='請先勾選人員'; return; }
+    nearbyMsg.textContent='送出中…'; let ok=0, match=0, fail=0;
     for(const u of picks){
       try{
-        const r = await fetch(`${API_BASE}/like`, {method:'POST', headers:{'Content-Type':'application/json',...authHeader()}, body: JSON.stringify({to_username:u})});
-        const d = await r.json();
-        if(!r.ok) throw new Error(d.detail||r.statusText);
+        const r=await apiFetch('/like',{method:'POST', body: JSON.stringify({to_username:u})});
+        const d=await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
         ok++; if(d.matched) match++;
       }catch{ fail++; }
     }
-    nearbyMsg.textContent = `完成：成功 ${ok}，其中配對 ${match}，失敗 ${fail}`;
+    nearbyMsg.textContent = `完成：成功 ${ok}，配對 ${match}，失敗 ${fail}`;
+    // 成功後更新配對清單
+    loadMatches();
   };
 
-  // ---------- 配對列表 ----------
-  document.getElementById('btnMatches').onclick = async ()=>{
-    const out=document.getElementById('matchOut'); out.textContent='讀取中…';
+  // ---------- 我的配對（卡片式） ----------
+  const matchList = document.getElementById('matchList');
+  const matchCount = document.getElementById('matchCount');
+
+  // 小工具：安全取得欄位
+  const val = (v, d='—') => (v===null||v===undefined||v==='') ? d : v;
+  const makePill = (txt)=>{ const s=document.createElement('span'); s.className='pill'; s.textContent=txt; return s; };
+
+  function createMatchCard(u){
+    // 預期欄位：username, display_name, gender, age, city, interests[], bio
+    const card = document.createElement('div'); card.className='match-card';
+
+    const top = document.createElement('div'); top.className='match-top';
+    const left = document.createElement('div');
+    const name = document.createElement('div'); name.className='match-name';
+    name.textContent = val(u.display_name, u.username);
+    const sub = document.createElement('div'); sub.className='small';
+    const g = val(u.gender,'—'), age = (u.age??'—'), city = val(u.city,'—');
+    sub.textContent = `@${u.username} ｜ ${g} ｜ ${age} 歲 ｜ ${city}`;
+    left.appendChild(name); left.appendChild(sub);
+
+    const right = document.createElement('div');
+    const badge = document.createElement('span'); badge.className='badge'; badge.textContent='已互讚';
+    right.appendChild(badge);
+    top.appendChild(left); top.appendChild(right);
+    card.appendChild(top);
+
+    // 興趣
+    const it = (u.interests||[]);
+    if (it.length){
+      const row=document.createElement('div'); row.className='row-mini';
+      it.forEach(x=>row.appendChild(makePill(x)));
+      card.appendChild(row);
+    }
+
+    // 自我介紹
+    const bio = document.createElement('div'); bio.className='bio';
+    bio.textContent = val(u.bio, '（尚未填寫自我介紹）');
+    card.appendChild(bio);
+
+    // 動作列
+    const actions = document.createElement('div'); actions.className='row-mini';
+    const copyBtn = document.createElement('button'); copyBtn.className='btn gray'; copyBtn.textContent='複製用戶名';
+    copyBtn.onclick = async ()=>{ try{ await navigator.clipboard.writeText(u.username); copyBtn.textContent='已複製'; setTimeout(()=>copyBtn.textContent='複製用戶名',1200);}catch{} };
+    actions.appendChild(copyBtn);
+    // （可再加：開聊天/解除配對，視後端路由是否支援）
+    card.appendChild(actions);
+
+    return card;
+  }
+
+  function renderMatches(arr){
+    matchList.innerHTML='';
+    const list = Array.isArray(arr) ? arr : [];
+    matchCount.textContent = `共 ${list.length} 組配對`;
+    if(!list.length){
+      const e=document.createElement('div'); e.className='muted'; e.textContent='目前沒有配對～試著多按讚或放大搜尋半徑吧！';
+      matchList.appendChild(e); return;
+    }
+    for(const u of list){ matchList.appendChild(createMatchCard(u)); }
+  }
+
+  async function loadMatches(){
     try{
-      const r = await fetch(`${API_BASE}/matches`,{headers:{...authHeader()}});
+      const r = await apiFetch('/matches');
       const d = await r.json();
-      out.textContent = JSON.stringify(d,null,2);
-    }catch(e){ out.textContent='錯誤：'+(e.message||e); }
-  };
+      // 兼容不同後端回傳形狀
+      const arr = Array.isArray(d) ? d : (d.matches || d.users || []);
+      renderMatches(arr || []);
+    }catch(e){
+      matchCount.textContent='配對載入失敗：'+e.message;
+      matchList.innerHTML='';
+    }
+  }
 
-  // 首次開頁試 ping
-  if(API_BASE) ping();
+  document.getElementById('btnMatches').onclick = loadMatches;
 </script>
 </body>
 </html>
