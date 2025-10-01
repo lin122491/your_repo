@@ -2,11 +2,13 @@
   - type: web
     name: your-repo
     env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.5
+        value: 3.12.4
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:///./dating.db

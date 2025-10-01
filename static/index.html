@@ -1,519 +1,310 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>遊戲配對網</title>
   <style>
-    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";background:#f7f7fb;margin:0;color:#222}
+    body{font-family:system-ui,-apple-system,"Noto Sans TC","Segoe UI",Roboto,Arial;background:#f7f7fb;margin:0;color:#222}
     .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
-    h1{font-size:28px;margin:0 0 16px}
-    .muted{color:#666;font-size:13px}
-    .card{background:#fff;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.07);padding:18px 20px;margin:18px 0}
-    .row{display:flex;gap:18px;flex-wrap:wrap}
+    h1{font-size:28px;margin:0 0 8px}
+    .sub{color:#666;margin-bottom:16px}
+    .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:14px 0}
+    .row{display:flex;gap:16px;flex-wrap:wrap}
     .col{flex:1 1 420px;min-width:320px}
     label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
-    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none;background:#fff}
-    input:focus,select:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
-    textarea{min-height:84px;resize:vertical}
+    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
     .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
     .btn.green{background:#0aa56b}
     .btn.gray{background:#e5e7eb;color:#111}
-    .btn.red{background:#e63b3b}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-    .pill{display:inline-block;background:#eef2ff;color:#3f51b5;border-radius:999px;padding:4px 10px;margin:2px 6px 2px 0;font-size:12px}
     .status{font-weight:700;padding:5px 9px;border-radius:999px}
     .ok{background:#e6f7ef;color:#117a47}
     .bad{background:#fde8e8;color:#9b2226}
+    .muted{color:#666;font-size:13px}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-    .match{border:1px solid #e5e7eb;border-radius:12px;padding:12px;cursor:pointer;background:#fff}
-    .match:hover{box-shadow:0 6px 18px rgba(0,0,0,.08)}
-    .line{display:flex;gap:8px;align-items:center;font-size:14px;color:#444;margin:3px 0}
-    .tag{font-size:12px;background:#f1f5f9;color:#0f172a;padding:3px 8px;border-radius:999px;margin-right:6px}
-    .chat{display:flex;flex-direction:column;height:420px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
-    .chat-head{padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between}
-    .chat-body{flex:1;background:#fff;overflow:auto;padding:12px}
-    .msg{max-width:74%;padding:8px 12px;border-radius:12px;margin:6px 0;font-size:14px;line-height:1.45}
-    .me{background:#2962ff;color:#fff;margin-left:auto;border-bottom-right-radius:4px}
-    .other{background:#eff6ff;color:#0f172a;margin-right:auto;border-bottom-left-radius:4px}
-    .chat-foot{border-top:1px solid #e5e7eb;background:#f8fafc;padding:10px 12px;display:flex;gap:8px}
-    .w80{width:80px}
-    .w120{width:120px}
-    .right{float:right}
+    .tag{display:inline-block;background:#eef2ff;color:#1f3a8a;border-radius:999px;padding:2px 8px;margin:2px 4px 0 0;font-size:12px}
+    .small{font-size:12px;color:#555}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>遊戲配對網 <span id="authStatus" class="status bad">未登入</span></h1>
+  <h1>遊戲配對網</h1>
+  <div class="sub">註冊需同意 <a href="/disclaimer" target="_blank">免責聲明</a> 與 <a href="/privacy" target="_blank">隱私權政策</a>。</div>
 
-  <!-- 登入 / 註冊 -->
   <div class="row">
+    <div class="card col">
+      <h3>建立帳號</h3>
+      <label>用戶名</label><input id="su_username" autocomplete="username">
+      <label>密碼（≥6）</label><input id="su_password" type="password" autocomplete="new-password">
+      <label>電子信箱（可空白）</label><input id="su_email" type="email">
+      <label><input type="checkbox" id="su_consent"> 我已詳讀並同意 <a href="/disclaimer" target="_blank">免責聲明</a> 與 <a href="/privacy" target="_blank">隱私權政策</a></label>
+      <div style="margin-top:10px"><button class="btn" id="btnSignup">註冊</button></div>
+      <div class="muted" id="su_msg" style="margin-top:8px"></div>
+    </div>
+
     <div class="card col">
       <h3>登入</h3>
       <label>用戶名</label><input id="li_username" autocomplete="username">
       <label>密碼</label><input id="li_password" type="password" autocomplete="current-password">
       <div style="margin-top:10px"><button class="btn green" id="btnLogin">登入</button></div>
-      <div class="muted" id="li_msg" style="margin-top:8px">登入後會自動回報定位。</div>
-    </div>
-
-    <div class="card col">
-      <h3>註冊</h3>
-      <label>用戶名</label><input id="su_username" autocomplete="username">
-      <label>密碼 (&ge;6)</label><input id="su_password" type="password" autocomplete="new-password">
-      <label>電子信箱（可空白）</label><input id="su_email" type="email">
-      <div style="margin-top:10px"><button class="btn" id="btnSignup">建立帳號</button></div>
-      <div class="muted" id="su_msg" style="margin-top:8px"></div>
+      <div class="muted" id="li_msg" style="margin-top:8px">登入成功後將自動回報定位。</div>
+      <div style="margin-top:8px">登入狀態：<span id="authStatus" class="status bad">未登入</span> <button class="btn gray" id="btnLogout">登出</button></div>
     </div>
   </div>
 
-  <!-- 個人資料 -->
   <div class="card">
-    <h3>個人資料</h3>
+    <h3>我的資料</h3>
     <div class="row">
       <div class="col">
-        <label>暱稱</label>
-        <input id="nickname" placeholder="例如：小明">
+        <label>暱稱</label><input id="pf_name">
       </div>
       <div class="col">
         <label>性別</label>
-        <select id="gender">
-          <option value="">未填寫</option>
+        <select id="pf_gender">
+          <option value="">（未設定）</option>
           <option value="男">男</option>
           <option value="女">女</option>
+          <option value="其他">其他</option>
         </select>
       </div>
       <div class="col">
-        <label>生日</label>
-        <input id="birthday" type="date">
+        <label>生日</label><input id="pf_bday" type="date">
       </div>
       <div class="col">
-        <label>城市</label>
-        <input id="city" placeholder="例如：台北市">
+        <label>城市</label><input id="pf_city" placeholder="例：台北市">
       </div>
     </div>
-    <label>自我介紹</label>
-    <textarea id="bio" placeholder="簡單介紹自己吧"></textarea>
-    <label>興趣標籤（以逗號分隔；英數自動轉大寫）</label>
-    <input id="interests" placeholder="LOL, VALORANT, 登山">
-    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-      <button class="btn gray" id="btnLoadMe">取得我的個人檔案</button>
-      <button class="btn" id="btnSaveProfile">儲存個人檔案</button>
-      <button class="btn red right" id="btnLogout">登出</button>
-      <span id="saveProfileMsg" class="muted"></span>
+    <label>自我介紹</label><textarea id="pf_bio" rows="3"></textarea>
+    <label>興趣標籤（以逗號分隔；英數自動大寫、中文維持原樣）</label>
+    <input id="pf_interests" placeholder="例如：LOL, 漫畫, APEX">
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn" id="btnSaveProfile">儲存</button>
+      <button class="btn gray" id="btnRefreshMe">重新載入</button>
     </div>
+    <div class="muted" id="me_msg" style="margin-top:8px"></div>
   </div>
 
-  <!-- 定位 + 搜附近 -->
   <div class="row">
     <div class="card col">
-      <h3>定位</h3>
-      <label>緯度</label><input id="lat" readonly>
-      <label>經度</label><input id="lng" readonly>
-      <label>半徑（公里）</label><input id="radius" value="100">
-      <div style="margin-top:8px" class="muted" id="locMsg">登入後會自動回報定位（每 60 秒）。</div>
+      <h3>附近的人（預設 100 公里）</h3>
+      <div class="small">已嘗試自動回報定位；若未授權定位，請到瀏覽器允許或手動變更城市。</div>
+      <div style="margin:10px 0">
+        <label>搜尋半徑（公里）</label>
+        <input id="radius" value="100">
+        <button class="btn" id="btnNearby">搜尋附近</button>
+      </div>
+      <div id="nearbyList" class="grid"></div>
     </div>
 
     <div class="card col">
-      <h3>附近（表單過濾配對）</h3>
-      <label>性別</label>
-      <select id="f_gender">
-        <option value="">不限</option>
-        <option value="男">男</option>
-        <option value="女">女</option>
-      </select>
-      <div class="row">
-        <div class="col">
-          <label>最小年齡</label><input id="f_minage" class="w120" placeholder="例如 18">
-        </div>
-        <div class="col">
-          <label>最大年齡</label><input id="f_maxage" class="w120" placeholder="例如 30">
-        </div>
-      </div>
-      <label>興趣（逗號；英數自動轉大寫）</label>
-      <input id="f_interests" placeholder="LOL, VALORANT">
-      <div style="margin-top:10px">
-        <button class="btn" id="btnSearch">搜尋</button>
-        <span class="muted" id="searchMsg"></span>
-      </div>
-      <div id="searchResult" style="margin-top:12px"></div>
+      <h3>快速連結</h3>
+      <div><a href="/disclaimer" target="_blank">免責聲明</a> ｜ <a href="/privacy" target="_blank">隱私權政策</a> ｜ <a href="/docs" target="_blank">API文件</a></div>
     </div>
-  </div>
-
-  <!-- 我的配對 -->
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <h3>我的配對</h3>
-      <button class="btn gray" id="btnRefreshMatches">重新整理</button>
-    </div>
-    <div id="matches" class="grid"></div>
-  </div>
-
-  <!-- 聊天室 -->
-  <div class="card">
-    <h3>聊天室</h3>
-    <div class="chat" id="chatBox" style="display:none">
-      <div class="chat-head">
-        <div>
-          正在與 <strong id="chatWith">@</strong> 聊天
-        </div>
-        <button class="btn gray" id="btnCloseChat">關閉</button>
-      </div>
-      <div class="chat-body" id="chatBody"></div>
-      <div class="chat-foot">
-        <input id="chatInput" placeholder="輸入訊息">
-        <button class="btn" id="btnSendChat">送出</button>
-      </div>
-    </div>
-    <div id="chatEmpty" class="muted">點「我的配對」中的卡片可打開與對方的聊天室。</div>
   </div>
 </div>
 
 <script>
-/* ==============================
-   0) 共同工具 / API 設定（隱藏）
-   ============================== */
-const API_BASE = window.location.origin; // 隱藏；使用同源
-const tokenKey = 'authToken';
-function setToken(t){ localStorage.setItem(tokenKey, t); refreshAuthStatus(); }
-function getToken(){ return localStorage.getItem(tokenKey) || ''; }
-function clearToken(){ localStorage.removeItem(tokenKey); refreshAuthStatus(); }
-function authHeader(){ const t = getToken(); return t ? { 'Authorization': `Bearer ${t}` } : {}; }
+  // ------------ API base：隱藏，預設用同源 ------------
+  const API_BASE = window.location.origin;
 
-function refreshAuthStatus(){
-  const tag = document.getElementById('authStatus');
-  if(getToken()){ tag.textContent = '已登入'; tag.className = 'status ok'; }
-  else { tag.textContent = '未登入'; tag.className = 'status bad'; }
-}
-refreshAuthStatus();
+  // ------------ Auth Token ------------
+  const tokenKey = 'authToken';
+  const setToken = t => { localStorage.setItem(tokenKey, t); refreshAuthStatus(); };
+  const getToken = () => localStorage.getItem(tokenKey) || '';
+  const clearToken = () => { localStorage.removeItem(tokenKey); refreshAuthStatus(); };
+  const authHeader = () => getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {};
 
-function toGenderCode(g){
-  if(!g) return null;
-  g = (''+g).trim().toLowerCase();
-  if(g==='男' || g==='male' || g==='m') return 'male';
-  if(g==='女' || g==='female' || g==='f') return 'female';
-  return null;
-}
-function toGenderLabel(code){
-  if(!code) return '未填';
-  code = (''+code).toLowerCase();
-  if(code==='male') return '男';
-  if(code==='female') return '女';
-  return '未填';
-}
-function parseInterestsInput(s){
-  if(!s) return [];
-  const parts = s.split(/[,\s，、]+/).map(x=>x.trim()).filter(Boolean);
-  const out=[], seen=new Set();
-  for(const p of parts){
-    const val = /[A-Za-z0-9]/.test(p) ? p.toUpperCase() : p; // 英數轉大寫
-    if(!seen.has(val)){ seen.add(val); out.push(val); }
-  }
-  return out;
-}
-function showErrorToast(el, err){
-  const msg = err?.message || err?.detail || (typeof err==='string' ? err : JSON.stringify(err));
-  el.textContent = `失敗：${msg}`;
-}
-async function apiGet(path){
-  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeader() } });
-  const t = await r.text();
-  let data; try{ data = t?JSON.parse(t):{} }catch{ data = {detail:t||r.statusText} }
-  if(!r.ok){ throw new Error(data?.detail || JSON.stringify(data)); }
-  return data;
-}
-async function apiPost(path, body){
-  const r = await fetch(`${API_BASE}${path}`, {
-    method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
-    body: JSON.stringify(body ?? {})
-  });
-  const t = await r.text();
-  let data; try{ data = t?JSON.parse(t):{} }catch{ data = {detail:t||r.statusText} }
-  if(!r.ok){
-    const msg = data?.detail || (Array.isArray(data) && data[0]?.msg) || data?.message || JSON.stringify(data);
-    throw new Error(msg);
-  }
-  return data;
-}
-
-/* ==============================
-   1) 登入 / 註冊 / 登出
-   ============================== */
-document.getElementById('btnSignup').onclick = async () => {
-  const username = document.getElementById('su_username').value.trim();
-  const password = document.getElementById('su_password').value;
-  const email    = document.getElementById('su_email').value.trim();
-  const msg = document.getElementById('su_msg');
-  msg.textContent = '註冊中…';
-  try{
-    const res = await apiPost('/auth/signup', {username, password, email: email || null});
-    msg.textContent = '註冊成功！請至左側登入區登入。';
-  }catch(e){ showErrorToast(msg, e); }
-};
-
-document.getElementById('btnLogin').onclick = async () => {
-  const username = document.getElementById('li_username').value.trim();
-  const password = document.getElementById('li_password').value;
-  const msg = document.getElementById('li_msg');
-  msg.textContent = '登入中…';
-  try{
-    const res = await apiPost('/auth/login', {username, password});
-    setToken(res.access_token);
-    msg.textContent = '登入成功！';
-    // 登入後做初始化
-    await refreshMe(true);
-    triggerAutoLocate(); // 啟動自動回報定位
-    refreshMatches();
-  }catch(e){ showErrorToast(msg, e); }
-};
-
-document.getElementById('btnLogout').onclick = () => {
-  clearToken();
-  document.getElementById('li_msg').textContent = '已登出。';
-};
-
-/* ==============================
-   2) 個人檔案：讀取 / 儲存
-   ============================== */
-async function refreshMe(fillInputs){
-  if(!getToken()) return;
-  const btn = document.getElementById('btnLoadMe');
-  btn.disabled = true;
-  try{
-    const me = await apiGet('/me');
-    if(fillInputs){
-      document.getElementById('nickname').value = me.nickname || '';
-      document.getElementById('gender').value   = toGenderLabel(me.gender);
-      document.getElementById('birthday').value = (me.birthday || '').substring(0,10);
-      document.getElementById('bio').value      = me.bio || '';
-      document.getElementById('city').value     = me.city || '';
-      document.getElementById('interests').value= (me.interests||[]).join(', ');
+  function refreshAuthStatus(){
+    const el = document.getElementById('authStatus');
+    if(getToken()){
+      el.textContent = '已登入'; el.className = 'status ok';
+    }else{
+      el.textContent = '未登入'; el.className = 'status bad';
     }
-  }catch(e){
-    console.log(e);
-  }finally{
-    btn.disabled = false;
   }
-}
-document.getElementById('btnLoadMe').onclick = () => refreshMe(true);
+  refreshAuthStatus();
 
-document.getElementById('btnSaveProfile').onclick = async () => {
-  const nickname  = document.getElementById('nickname').value.trim();
-  const genderRaw = document.getElementById('gender').value.trim(); // 男 / 女 / ''
-  const birthday  = document.getElementById('birthday').value.trim();
-  const bio       = document.getElementById('bio').value.trim();
-  const city      = document.getElementById('city').value.trim();
-  const interestsStr = document.getElementById('interests').value.trim();
-
-  const payload = {
-    nickname : nickname || null,
-    gender   : toGenderCode(genderRaw),
-    birthday : birthday || null,
-    bio      : bio || null,
-    city     : city || null,
-    interests: parseInterestsInput(interestsStr)
+  // ------------ 註冊 / 登入 / 登出 ------------
+  document.getElementById('btnSignup').onclick = async () => {
+    const username = document.getElementById('su_username').value.trim();
+    const password = document.getElementById('su_password').value;
+    const email = document.getElementById('su_email').value.trim();
+    const consent = document.getElementById('su_consent').checked;
+    const msg = document.getElementById('su_msg');
+    msg.textContent = '送出中…';
+    try{
+      const r = await fetch(`${API_BASE}/auth/signup`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password, email, consent_agreed: consent})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      msg.textContent = '註冊成功，請登入。';
+    }catch(e){ msg.textContent = `失敗：${e.message || e}`; }
   };
 
-  const msg = document.getElementById('saveProfileMsg');
-  msg.textContent = '儲存中…';
-  try{
-    await apiPost('/me/profile', payload);
-    msg.textContent = '已儲存！';
-    refreshMe(true);
-  }catch(e){ showErrorToast(msg, e); }
-};
+  document.getElementById('btnLogin').onclick = async () => {
+    const username = document.getElementById('li_username').value.trim();
+    const password = document.getElementById('li_password').value;
+    const el = document.getElementById('li_msg');
+    el.textContent = '登入中…';
+    try{
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      setToken(data.access_token);
+      el.textContent = '登入成功！將嘗試自動回報定位…';
+      // 自動回報定位
+      tryAutoGeoReport();
+    }catch(e){ el.textContent = `登入失敗：${e.message || e}`; }
+  };
 
-/* ==============================
-   3) 定位：登入後自動回報 + 每 60 秒
-   ============================== */
-let locateTimer = null;
-function triggerAutoLocate(){
-  clearInterval(locateTimer);
-  if(!getToken()) return;
-  const radiusInput = document.getElementById('radius');
-  if(!radiusInput.value) radiusInput.value = '100'; // 預設 100
-  const doLocate = () => {
-    if(!navigator.geolocation){
-      document.getElementById('locMsg').textContent = '此瀏覽器不支援定位。';
-      return;
-    }
+  document.getElementById('btnLogout').onclick = () => { clearToken(); };
+
+  // ------------ 我 / 儲存 ------------
+  async function loadMe(){
+    const msg = document.getElementById('me_msg');
+    msg.textContent = '載入中…';
+    try{
+      const r = await fetch(`${API_BASE}/me`, { headers: {...authHeader()} });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+
+      document.getElementById('pf_name').value = data.display_name || '';
+      document.getElementById('pf_gender').value = data.gender || '';
+      document.getElementById('pf_bday').value = data.birthday || '';
+      document.getElementById('pf_city').value = data.city || '';
+      document.getElementById('pf_bio').value = data.bio || '';
+      document.getElementById('pf_interests').value = (data.interests||[]).join(', ');
+      msg.textContent = '已載入。';
+    }catch(e){ msg.textContent = `錯誤：${e.message || e}`; }
+  }
+  document.getElementById('btnRefreshMe').onclick = loadMe;
+
+  document.getElementById('btnSaveProfile').onclick = async () => {
+    const msg = document.getElementById('me_msg');
+    msg.textContent = '儲存中…';
+    const payload = {
+      display_name: document.getElementById('pf_name').value.trim(),
+      gender: document.getElementById('pf_gender').value,
+      birthday: document.getElementById('pf_bday').value || null,
+      city: document.getElementById('pf_city').value.trim(),
+      bio: document.getElementById('pf_bio').value.trim(),
+      interests: document.getElementById('pf_interests').value
+        .split(',').map(s => s.trim()).filter(Boolean)
+    };
+    try{
+      const r = await fetch(`${API_BASE}/me`, {
+        method:'PATCH', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      msg.textContent = '已儲存。';
+    }catch(e){ msg.textContent = `錯誤：${e.message || e}`; }
+  };
+
+  // ------------ 定位 / 附近 ------------
+  async function tryAutoGeoReport(){
+    if(!getToken()) return;
+    if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(async (pos)=>{
-      const lat = pos.coords.latitude, lng = pos.coords.longitude;
-      document.getElementById('lat').value = lat.toFixed(6);
-      document.getElementById('lng').value = lng.toFixed(6);
-      document.getElementById('locMsg').textContent = '已回報定位。';
-      try{ await apiPost('/me/location', {lat, lng}); }catch(e){ console.log(e); }
-    },(err)=>{
-      document.getElementById('locMsg').textContent = `定位失敗：${err.message}`;
-    },{enableHighAccuracy:true,timeout:8000});
+      try{
+        await fetch(`${API_BASE}/me/location`, {
+          method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+          body: JSON.stringify({lat: pos.coords.latitude, lng: pos.coords.longitude})
+        });
+      }catch(_){}
+    }, (_err)=>{/* 靜默 */}, {enableHighAccuracy:false, timeout:5000, maximumAge:60000});
+  }
+
+  async function searchNearby(){
+    const list = document.getElementById('nearbyList');
+    list.innerHTML = '搜尋中…';
+    // 若沒有 Token 就不用查
+    if(!getToken()){ list.innerHTML = '<div class="muted">請先登入</div>'; return; }
+
+    // 取座標：優先用最近回報的；若無，嘗試抓一次
+    let lat=null, lng=null;
+    try{
+      const me = await (await fetch(`${API_BASE}/me`, { headers:{...authHeader()} })).json();
+      lat = me.lat; lng = me.lng;
+      if((lat==null || lng==null) && navigator.geolocation){
+        await new Promise(resolve=>{
+          navigator.geolocation.getCurrentPosition((pos)=>{ lat=pos.coords.latitude; lng=pos.coords.longitude; resolve(); }, ()=>resolve(), {timeout:4000});
+        });
+      }
+    }catch(_){}
+
+    if(lat==null || lng==null){
+      list.innerHTML = '<div class="muted">尚無定位，請允許定位或於個人資料填寫城市。</div>'; return;
+    }
+
+    const radius = parseFloat(document.getElementById('radius').value || '100');
+    try{
+      const r = await fetch(`${API_BASE}/nearby`, {
+        method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify({lat, lng, radius_km: radius})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      renderNearby(data.users || []);
+    }catch(e){ list.innerHTML = `<div class="muted">錯誤：${e.message || e}</div>`; }
+  }
+  document.getElementById('btnNearby').onclick = searchNearby;
+
+  function renderNearby(users){
+    const list = document.getElementById('nearbyList');
+    if(!users.length){ list.innerHTML = '<div class="muted">目前查無附近用戶</div>'; return; }
+    list.innerHTML = '';
+    for(const u of users){
+      const age = u.birthday ? calcAge(u.birthday) : '';
+      const g = zhGender(u.gender);
+      const tags = (u.interests||[]).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(' ');
+      const bio = u.bio ? escapeHtml(u.bio) : '（尚無自我介紹）';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div style="font-weight:700">${escapeHtml(u.display_name || u.username)}</div>
+        <div class="small">${[g, age?`${age} 歲`:null, u.city||null].filter(Boolean).join("・")}　距離：約 ${u.distance_km} km</div>
+        <div style="margin-top:6px">${bio}</div>
+        <div style="margin-top:6px">${tags}</div>
+      `;
+      list.appendChild(card);
+    }
+  }
+
+  const zhGender = g => {
+    if(!g) return '未設定';
+    const s = String(g).toLowerCase();
+    if(s==='male' || s==='m' || s==='男') return '男';
+    if(s==='female' || s==='f' || s==='女') return '女';
+    return '其他';
   };
-  doLocate();
-  locateTimer = setInterval(doLocate, 60*1000);
-}
 
-/* ==============================
-   4) 搜附近（表單過濾）
-   ============================== */
-function parseFilterInterests(){ return parseInterestsInput(document.getElementById('f_interests').value.trim()); }
-document.getElementById('btnSearch').onclick = async () => {
-  if(!getToken()){ alert('請先登入'); return; }
-  const lat = parseFloat(document.getElementById('lat').value || '0');
-  const lng = parseFloat(document.getElementById('lng').value || '0');
-  const radius_km = parseFloat(document.getElementById('radius').value || '100');
+  const calcAge = iso => {
+    try{
+      const d = new Date(iso);
+      const today = new Date();
+      let age = today.getFullYear() - d.getFullYear();
+      const m = today.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+      return age;
+    }catch(_){ return ''; }
+  };
 
-  const gender = toGenderCode(document.getElementById('f_gender').value.trim()); // 轉 male/female
-  const min_age = parseInt(document.getElementById('f_minage').value || '0', 10) || null;
-  const max_age = parseInt(document.getElementById('f_maxage').value || '0', 10) || null;
-  const interests = parseFilterInterests();
+  const escapeHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  const msg = document.getElementById('searchMsg');
-  msg.textContent = '搜尋中…';
-  try{
-    // 你的後端若有做篩選，可以把 gender/min_age/max_age/interests 一併 POST，沒有也不會錯
-    const data = await apiPost('/nearby', {lat, lng, radius_km, gender, min_age, max_age, interests});
-    renderSearch(data.users || []);
-    msg.textContent = `找到 ${ (data.users||[]).length } 位。`;
-  }catch(e){ showErrorToast(msg, e); }
-};
-
-function renderSearch(users){
-  const box = document.getElementById('searchResult');
-  if(!users?.length){ box.innerHTML = '<div class="muted">沒有符合條件的人。</div>'; return; }
-  const cards = users.map(u => matchCard(u, true)).join('');
-  box.innerHTML = `<div class="grid">${cards}</div>`;
-}
-
-/* ==============================
-   5) 我的配對（卡片化）
-   ============================== */
-async function refreshMatches(){
-  if(!getToken()) return;
-  try{
-    const data = await apiGet('/matches');
-    const arr = data.matches || data.users || [];
-    const box = document.getElementById('matches');
-    if(!arr.length){ box.innerHTML = '<div class="muted">尚無配對。</div>'; return; }
-    box.innerHTML = arr.map(u => matchCard(u,false)).join('');
-  }catch(e){
-    console.log(e);
-  }
-}
-document.getElementById('btnRefreshMatches').onclick = refreshMatches;
-
-function ageFromBirthday(s){
-  if(!s) return '—';
-  const d = new Date(s);
-  if(isNaN(d.getTime())) return '—';
-  const today = new Date();
-  let age = today.getFullYear() - d.getFullYear();
-  const m = today.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
-  return age;
-}
-
-function badge(t){ return `<span class="tag">${t}</span>`; }
-
-function matchCard(u, allowChat){
-  const name = u.nickname || u.username || '(未命名)';
-  const g = toGenderLabel(u.gender);
-  const age = ageFromBirthday(u.birthday);
-  const city = u.city || '—';
-  const dist = u.distance_km!=null ? (+u.distance_km).toFixed(3) : '—';
-  const interests = (u.interests || []).map(badge).join(' ');
-  const who = u.username || u.nickname || '';
-  const clickable = `data-username="${who}"`;
-  return `
-    <div class="match" ${allowChat ? '' : clickable} onclick="${allowChat ? '' : 'openChatFromCard(this)'}">
-      <div class="line"><strong>${name}</strong> <span class="muted">@${who}</span></div>
-      <div class="line">性別/年齡：${g} / ${age}</div>
-      <div class="line">城市：${city}</div>
-      <div class="line">距離：${dist} km</div>
-      <div class="line">興趣：${interests || '<span class="muted">—</span>'}</div>
-    </div>
-  `;
-}
-
-/* ==============================
-   6) 聊天室（點配對卡片開啟）
-   ============================== */
-let currentChatId = null;
-let currentPeer   = null;
-let chatTimer     = null;
-
-window.openChatFromCard = async (el) => {
-  const other = el.getAttribute('data-username');
-  if(!other) return;
-  try{
-    const res = await apiPost('/chats/start', { other_username: other });
-    currentChatId = res.chat_id || res.id;
-    currentPeer = other;
-    document.getElementById('chatWith').textContent = '@' + other;
-    document.getElementById('chatEmpty').style.display = 'none';
-    document.getElementById('chatBox').style.display = 'flex';
-    await loadMessages();
-    startChatPolling();
-  }catch(e){
-    alert('開啟聊天室失敗：' + (e.message||e));
-  }
-};
-
-async function loadMessages(){
-  if(!currentChatId) return;
-  try{
-    const data = await apiGet(`/chats/${currentChatId}/messages`);
-    renderMessages(data.messages || []);
-  }catch(e){
-    console.log(e);
-  }
-}
-function renderMessages(list){
-  const body = document.getElementById('chatBody');
-  if(!list.length){ body.innerHTML = '<div class="muted">尚無訊息。</div>'; return; }
-  body.innerHTML = list.map(m => {
-    const me = m.is_me || m.sender==='me' || m.mine;
-    const cls = me ? 'msg me' : 'msg other';
-    return `<div class="${cls}">${escapeHtml(m.text||'')}</div>`;
-  }).join('');
-  body.scrollTop = body.scrollHeight;
-}
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[c])); }
-
-function startChatPolling(){
-  stopChatPolling();
-  chatTimer = setInterval(loadMessages, 3000);
-}
-function stopChatPolling(){ clearInterval(chatTimer); chatTimer=null; }
-
-document.getElementById('btnCloseChat').onclick = () => {
-  stopChatPolling();
-  currentChatId = null; currentPeer = null;
-  document.getElementById('chatBox').style.display = 'none';
-  document.getElementById('chatEmpty').style.display = 'block';
-  document.getElementById('chatBody').innerHTML = '';
-};
-
-document.getElementById('btnSendChat').onclick = async () => {
-  const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if(!text || !currentChatId) return;
-  try{
-    await apiPost(`/chats/${currentChatId}/send`, { text });
-    input.value = '';
-    await loadMessages();
-  }catch(e){
-    alert('送出失敗：' + (e.message||e));
-  }
-};
-
-/* ==============================
-   7) 頁面初始化（若已登入則自動帶出資料/配對/定位）
-   ============================== */
-(async function init(){
+  // 初次載入
+  refreshAuthStatus();
   if(getToken()){
-    await refreshMe(true);
-    triggerAutoLocate();
-    refreshMatches();
+    loadMe();
+    tryAutoGeoReport();
   }
-})();
 </script>
 </body>
 </html>
