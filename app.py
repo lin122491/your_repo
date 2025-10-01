@@ -6,13 +6,8 @@ from datetime import datetime, timedelta, date
 from typing import Optional, List, Tuple, Dict, Any
 
 from fastapi import (
-    FastAPI,
-    Depends,
-    HTTPException,
-    Request,
-    WebSocket,
-    WebSocketDisconnect,
-    Query,
+    FastAPI, Depends, HTTPException, Request,
+    WebSocket, WebSocketDisconnect, Query,
 )
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,36 +21,22 @@ from jwt import InvalidTokenError
 from passlib.context import CryptContext
 
 from sqlalchemy import (
-    create_engine,
-    Column,
-    Integer,
-    String,
-    Float,
-    DateTime,
-    Boolean,
-    Text,
-    ForeignKey,
-    UniqueConstraint,
-    and_,
-    or_,
+    create_engine, Column, Integer, String, Float, DateTime, Boolean, Text,
+    ForeignKey, UniqueConstraint, and_, or_,
 )
-from sqlalchemy.orm import (
-    sessionmaker,
-    declarative_base,
-    Session,
-    relationship,
-)
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.exc import IntegrityError
 
-# ----------------------------
+# =========================
 # 環境設定
-# ----------------------------
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")  # 正式請改環境變數
+# =========================
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_ALG = "HS256"
 ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dating.db")
 
-# 強制使用 psycopg v3 驅動（若是 Postgres）
+# Postgres 統一用 psycopg v3
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
@@ -70,13 +51,12 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
-# 密碼雜湊：用 pbkdf2_sha256（免安裝 C 編譯）
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
-# ----------------------------
+# =========================
 # 資料表
-# ----------------------------
+# =========================
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -84,51 +64,36 @@ class User(Base):
     email = Column(String(200), nullable=True)
     password_hash = Column(String(200), nullable=False)
 
-    # 個人檔案
-    display_name = Column(String(60), nullable=True)   # 暱稱
-    gender = Column(String(10), nullable=True)         # male/female/other
+    display_name = Column(String(60), nullable=True)
+    gender = Column(String(10), nullable=True)   # male/female/other
     birthday = Column(DateTime, nullable=True)
     city = Column(String(60), nullable=True)
     bio = Column(Text, nullable=True)
-    interests = Column(Text, nullable=True)            # 以逗號儲存 ["LOL","VALORANT","登山"] => "LOL,VALORANT,登山"
+    interests = Column(Text, nullable=True)      # "LOL,VALORANT,登山"
 
-    # 定位
     lat = Column(Float, nullable=True)
     lng = Column(Float, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # 偏好：是否願意回報精準定位
     geo_precise_opt_in = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_profile_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # 方便篩選的索引
-    __table_args__ = (
-        UniqueConstraint("username", name="uq_users_username"),
-    )
+    __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
 
 
 class Like(Base):
-    """
-    按讚/喜歡（建立配對的前提）
-    user_id 喜歡 target_id；雙向存在即為配對
-    """
     __tablename__ = "likes"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     target_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "target_id", name="uq_like_pair"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "target_id", name="uq_like_pair"),)
 
 
 class Message(Base):
-    """
-    聊天訊息
-    """
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     sender_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
@@ -141,11 +106,10 @@ def create_db():
     Base.metadata.create_all(bind=engine)
 
 
-# ----------------------------
+# =========================
 # Pydantic Schemas
-# ----------------------------
+# =========================
 def _normalize_interests_to_store(raw: Optional[str | List[str]]) -> str:
-    # 接受逗號字串或陣列；ASCII 單字轉大寫；中文維持
     if not raw:
         return ""
     if isinstance(raw, str):
@@ -154,10 +118,9 @@ def _normalize_interests_to_store(raw: Optional[str | List[str]]) -> str:
         parts = [str(p).strip() for p in raw if str(p).strip()]
     norm: List[str] = []
     for p in parts:
-        # 如果是英文字母/數字/空白/符號混合，嘗試轉大寫；中文保持
         try:
+            # ASCII 有值則轉大寫，中文維持
             if p.encode("ascii", errors="ignore"):
-                # ASCII 轉大寫
                 norm.append(p.upper())
             else:
                 norm.append(p)
@@ -190,9 +153,20 @@ class LoginIn(BaseModel):
     password: str
 
 
+def _canon_gender(v: str) -> str:
+    v2 = v.strip().lower()
+    if v2 in {"male", "男"}:
+        return "male"
+    if v2 in {"female", "女"}:
+        return "female"
+    if v2 in {"other", "其他"}:
+        return "other"
+    raise ValueError("gender must be male/female/other (或 男/女/其他)")
+
+
 class ProfileIn(BaseModel):
     display_name: Optional[str] = None
-    gender: Optional[str] = None  # male/female/other
+    gender: Optional[str] = None  # male/female/other/男/女
     birthday: Optional[date] = None
     city: Optional[str] = None
     bio: Optional[str] = None
@@ -204,10 +178,7 @@ class ProfileIn(BaseModel):
     def chk_gender(cls, v: Optional[str]):
         if v is None:
             return v
-        v2 = v.lower().strip()
-        if v2 not in {"male", "female", "other"}:
-            raise ValueError("gender must be male / female / other")
-        return v2
+        return _canon_gender(v)
 
 
 class ProfileOut(BaseModel):
@@ -231,10 +202,10 @@ class LocationIn(BaseModel):
 
 class NearbyIn(BaseModel):
     radius_km: float = 100.0
-    gender: Optional[str] = None
+    gender: Optional[str] = None      # male/female/other
     min_age: Optional[int] = None
     max_age: Optional[int] = None
-    interest: Optional[str] = None  # 單個字串，部分比對即可（已做大寫）
+    interest: Optional[str] = None    # 單一關鍵字（已做大寫）
 
 
 class PairIn(BaseModel):
@@ -249,14 +220,14 @@ class ChatMessageOut(BaseModel):
     created_at: datetime
 
 
-# ----------------------------
+# =========================
 # FastAPI App
-# ----------------------------
+# =========================
 app = FastAPI(title="遊戲配對網後端")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 若要更嚴謹，請改成你的前端網域
+    allow_origins=["*"],  # 正式可改成你的前端網域
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -268,9 +239,9 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-# ----------------------------
+# =========================
 # 共用工具
-# ----------------------------
+# =========================
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -280,10 +251,7 @@ def get_db() -> Session:
 
 
 def create_access_token(sub: str, ttl_minutes: int = ACCESS_TOKEN_TTL_MIN) -> str:
-    payload = {
-        "sub": sub,
-        "exp": datetime.utcnow() + timedelta(minutes=ttl_minutes),
-    }
+    payload = {"sub": sub, "exp": datetime.utcnow() + timedelta(minutes=ttl_minutes)}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
@@ -329,24 +297,22 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def is_matched(db: Session, uid: int, vid: int) -> bool:
-    # 雙向 Like 即為配對
     a = db.query(Like).filter(and_(Like.user_id == uid, Like.target_id == vid)).first()
     b = db.query(Like).filter(and_(Like.user_id == vid, Like.target_id == uid)).first()
     return (a is not None) and (b is not None)
 
 
-# ----------------------------
-# 例外處理（統一 500 介面）
-# ----------------------------
+# =========================
+# 例外處理（統一 500）
+# =========================
 @app.exception_handler(Exception)
 async def all_exception_handler(_req: Request, exc: Exception):
-    # 你也可加入 log
     return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
 
 
-# ----------------------------
+# =========================
 # Routes
-# ----------------------------
+# =========================
 @app.get("/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
@@ -356,12 +322,10 @@ def health():
 def signup(payload: SignupIn, db: Session = Depends(get_db)):
     if db.query(User.id).filter(User.username == payload.username).first():
         raise HTTPException(status_code=400, detail="username already used")
-
-    pw = pwd_context.hash(payload.password)
     user = User(
         username=payload.username,
         email=payload.email,
-        password_hash=pw,
+        password_hash=pwd_context.hash(payload.password),
     )
     db.add(user)
     db.commit()
@@ -397,17 +361,12 @@ def get_me(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@app.put("/me")
-def update_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    me = current_user(db, token)
-
+def _apply_profile_changes(me: User, payload: ProfileIn):
     if payload.display_name is not None:
         me.display_name = payload.display_name
     if payload.gender is not None:
-        me.gender = payload.gender
+        me.gender = payload.gender  # 已在 validator 轉成 male/female/other
     if payload.birthday is not None:
-        # 存 datetime 方便通用
         me.birthday = datetime(payload.birthday.year, payload.birthday.month, payload.birthday.day)
     if payload.city is not None:
         me.city = payload.city
@@ -418,16 +377,27 @@ def update_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db
     if payload.geo_precise_opt_in is not None:
         me.geo_precise_opt_in = bool(payload.geo_precise_opt_in)
 
+
+@app.put("/me")
+def update_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
+    token = get_bearer_token(request)
+    me = current_user(db, token)
+    _apply_profile_changes(me, payload)
     db.add(me)
     db.commit()
     return {"ok": True}
+
+
+# 兼容：若前端不小心用 POST /me，也讓它可用，避免 405
+@app.post("/me")
+def update_me_post(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
+    return update_me(payload, request, db)
 
 
 @app.post("/me/location")
 def update_location(payload: LocationIn, request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
     me = current_user(db, token)
-
     me.lat = float(payload.lat)
     me.lng = float(payload.lng)
     me.updated_at = datetime.utcnow()
@@ -446,11 +416,10 @@ def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
     q = db.query(User).filter(User.id != me.id)
 
     if payload.gender:
-        q = q.filter(User.gender == payload.gender.lower())
+        q = q.filter(User.gender == _canon_gender(payload.gender))
 
     users = q.filter(User.lat.isnot(None), User.lng.isnot(None)).all()
 
-    # 年齡/興趣篩選
     result = []
     interest_upper = payload.interest.upper().strip() if payload.interest else None
 
@@ -484,7 +453,6 @@ def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
             "matched": is_matched(db, me.id, u.id),
         })
 
-    # 依距離排序
     result.sort(key=lambda x: x["distance_km"])
     return {"count": len(result), "users": result}
 
@@ -524,10 +492,8 @@ def get_matches(request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
     me = current_user(db, token)
 
-    # 我喜歡的
     mine = db.query(Like).filter(Like.user_id == me.id).all()
     target_ids = [lk.target_id for lk in mine]
-    # 對方也喜歡我（互相）
     theirs = db.query(Like).filter(and_(Like.user_id.in_(target_ids), Like.target_id == me.id)).all()
     matched_ids = {lk.user_id for lk in theirs}
 
@@ -551,42 +517,11 @@ def get_matches(request: Request, db: Session = Depends(get_db)):
                             if (me.lat and me.lng and u.lat and u.lng) else None),
         })
 
-    # 依最後更新時間或距離排序（這裡用距離）
     out.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"] or 10**9))
     return {"matches": out}
 
 
-# ----------------------------
-# 聊天（HTTP 歷史 & WebSocket）
-# ----------------------------
-@app.get("/chat/history/{peer_id}", response_model=List[ChatMessageOut])
-def chat_history(peer_id: int, request: Request, limit: int = 50, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    me = current_user(db, token)
-
-    if not is_matched(db, me.id, peer_id):
-        raise HTTPException(status_code=403, detail="not matched")
-
-    qs = db.query(Message).filter(
-        or_(
-            and_(Message.sender_id == me.id, Message.recipient_id == peer_id),
-            and_(Message.sender_id == peer_id, Message.recipient_id == me.id),
-        )
-    ).order_by(Message.created_at.desc()).limit(max(10, min(limit, 200))).all()
-
-    return [
-        ChatMessageOut(
-            id=m.id,
-            sender_id=m.sender_id,
-            recipient_id=m.recipient_id,
-            content=m.content,
-            created_at=m.created_at,
-        )
-        for m in reversed(qs)  # 由舊到新
-    ]
-
-
-# WebSocket 連線管理
+# ============ 聊天（HTTP 歷史 & WebSocket） ============
 class WSManager:
     def __init__(self):
         self.active: Dict[int, WebSocket] = {}
@@ -607,13 +542,32 @@ class WSManager:
 ws_manager = WSManager()
 
 
+@app.get("/chat/history/{peer_id}", response_model=List[ChatMessageOut])
+def chat_history(peer_id: int, request: Request, limit: int = 50, db: Session = Depends(get_db)):
+    token = get_bearer_token(request)
+    me = current_user(db, token)
+
+    if not is_matched(db, me.id, peer_id):
+        raise HTTPException(status_code=403, detail="not matched")
+
+    qs = db.query(Message).filter(
+        or_(
+            and_(Message.sender_id == me.id, Message.recipient_id == peer_id),
+            and_(Message.sender_id == peer_id, Message.recipient_id == me.id),
+        )
+    ).order_by(Message.created_at.desc()).limit(max(10, min(limit, 200))).all()
+
+    return [
+        ChatMessageOut(
+            id=m.id, sender_id=m.sender_id, recipient_id=m.recipient_id,
+            content=m.content, created_at=m.created_at,
+        )
+        for m in reversed(qs)
+    ]
+
+
 @app.websocket("/ws/chat")
-async def ws_chat(
-    websocket: WebSocket,
-    token: str = Query(...),
-    peer_id: int = Query(...),
-):
-    # 驗證 token 與是否配對
+async def ws_chat(websocket: WebSocket, token: str = Query(...), peer_id: int = Query(...)):
     try:
         username = decode_access_token(token)
     except HTTPException:
@@ -638,8 +592,6 @@ async def ws_chat(
             return
 
         await ws_manager.connect(me.id, websocket)
-
-        # 通知：上線
         await ws_manager.send_to(peer_id, {"type": "peer_online", "peer_id": me.id})
 
         while True:
@@ -648,7 +600,6 @@ async def ws_chat(
             if not text:
                 continue
 
-            # 寫 DB
             msg = Message(sender_id=me.id, recipient_id=peer_id, content=text)
             db.add(msg)
             db.commit()
@@ -662,9 +613,7 @@ async def ws_chat(
                 "content": msg.content,
                 "created_at": msg.created_at.isoformat(),
             }
-            # 回自己
             await ws_manager.send_to(me.id, payload)
-            # 推給對方
             await ws_manager.send_to(peer_id, payload)
 
     except WebSocketDisconnect:
@@ -674,9 +623,9 @@ async def ws_chat(
         db.close()
 
 
-# ----------------------------
+# =========================
 # 首頁 & 啟動
-# ----------------------------
+# =========================
 @app.get("/", response_class=HTMLResponse)
 def index():
     fp = os.path.join(STATIC_DIR, "index.html")
@@ -699,5 +648,5 @@ def index():
     )
 
 
-# 建表
+# 啟動時自動建表（安全 idempotent）
 create_db()

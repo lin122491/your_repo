@@ -2,352 +2,379 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>遊戲配對網</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{--bg:#f7f7fb;--card:#fff;--text:#222;--muted:#667;--pri:#2962ff;--ok:#0aa56b}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",Roboto,Arial}
+    :root { --p:#2563eb; --bg:#f6f7fb; --card:#fff; --mut:#666; }
+    body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui;}
     .wrap{max-width:1100px;margin:28px auto;padding:0 16px}
-    h1{margin:0 0 16px}.row{display:flex;gap:18px;flex-wrap:wrap}
-    .col{flex:1 1 420px;min-width:320px}
-    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:18px 0}
-    label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
-    input,select,textarea{width:100%;padding:10px 12px;border:1px solid #d7d7e0;border-radius:10px;font-size:15px;outline:none}
-    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
-    .btn{display:inline-block;background:var(--pri);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.green{background:var(--ok)}.btn.gray{background:#e5e7eb;color:#111}.btn.red{background:#e63b3b}
-    .muted{color:var(--muted);font-size:13px}
-    .status{font-weight:700;padding:3px 9px;border-radius:999px}
-    .ok{background:#e6f7ef;color:#117a47}.bad{background:#fde8e8;color:#9b2226}
-    .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
-    .match{border:1px solid #e6e6ef;border-radius:12px;padding:12px}
-    .match h4{margin:0 0 6px}.tag{display:inline-block;background:#eef;border-radius:999px;padding:2px 8px;margin:2px 6px 0 0;font-size:12px}
-    .flex{display:flex;gap:8px;align-items:center}.right{margin-left:auto}
-    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center}
-    .modal>.box{background:#fff;max-width:560px;width:calc(100% - 32px);padding:18px;border-radius:12px}
-    .chat{height:360px;border:1px solid #e1e1ea;border-radius:10px;padding:8px;overflow:auto;background:#fafafe}
-    .bubble{background:#fff;border-radius:10px;padding:6px 10px;margin:6px 0;max-width:80%}
-    .me{background:#dff1ff;margin-left:auto}
+    h1{margin:0 0 20px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+    label{display:block;margin:8px 0 6px;color:#111}
+    input,select,textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:14px}
+    textarea{min-height:80px}
+    .btn{display:inline-block;background:var(--p);color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+    .btn.muted{background:#e2e8f0;color:#111}
+    .muted{color:var(--mut);font-size:12px}
+    .list{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
+    .pill{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 8px;margin-right:4px;font-size:12px}
+    .item{border:1px solid #eee;border-radius:12px;padding:12px}
+    .item h4{margin:0 0 6px}
+    .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .right{margin-left:auto}
+    .chat{height:320px;overflow:auto;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px}
+    .msg{margin:4px 0;padding:6px 10px;border-radius:10px;max-width:70%}
+    .mine{background:#dbeafe;margin-left:auto}
+    .theirs{background:#f1f5f9}
   </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>遊戲配對網</h1>
 
-  <div class="card">
-    <div class="flex">
-      <div>登入狀態：<span id="authStatus" class="status bad">未登入</span></div>
-      <div class="right">
-        <button class="btn gray" id="btnLogout">登出</button>
-        <a class="btn gray" href="/disclaimer" target="_blank">免責聲明</a>
-        <a class="btn gray" href="/privacy" target="_blank">隱私權政策</a>
-      </div>
-    </div>
-  </div>
+  <h1>🎮 遊戲配對網</h1>
 
   <div class="row">
-    <div class="card col">
-      <h3>註冊 / 登入</h3>
-      <label>帳號</label><input id="lg_user">
-      <label>密碼</label><input id="lg_pass" type="password">
-      <div class="flex" style="gap:8px;margin-top:10px">
+    <!-- Auth -->
+    <div class="card">
+      <h3>登入 / 註冊</h3>
+      <div class="flex">
+        <input id="authUser" placeholder="使用者名稱" style="max-width:200px">
+        <input id="authPass" placeholder="密碼" type="password" style="max-width:200px">
         <button class="btn" id="btnLogin">登入</button>
-        <button class="btn green" id="btnSignup">註冊</button>
-        <span id="authMsg" class="muted"></span>
+        <button class="btn muted" id="btnSignup">註冊</button>
+        <span class="muted" id="authHint"></span>
       </div>
-      <div class="muted" style="margin-top:8px">註冊代表你已閱讀並同意<a href="/disclaimer" target="_blank">免責聲明</a>與<a href="/privacy" target="_blank">隱私權政策</a>。</div>
+      <div class="muted" style="margin-top:6px">Token：<span id="tokenSpan">（未登入）</span></div>
     </div>
 
-    <div class="card col">
+    <!-- Profile -->
+    <div class="card">
       <h3>我的個人檔案</h3>
-      <div class="flex" style="gap:8px;margin-bottom:8px">
-        <button class="btn gray" id="btnLoadMe">讀取</button>
+      <div class="flex" style="gap:10px">
+        <button class="btn muted" id="btnFetchMe">讀取</button>
         <button class="btn" id="btnSaveMe">儲存</button>
-        <span id="meMsg" class="muted"></span>
+        <span class="muted" id="saveHint"></span>
       </div>
-      <label>暱稱</label><input id="pf_display">
+      <label>暱稱</label>
+      <input id="displayName" placeholder="暱稱">
       <label>性別</label>
-      <select id="pf_gender">
-        <option value="">不顯示</option>
+      <select id="gender">
+        <option value="">不公開</option>
         <option value="男">男</option>
         <option value="女">女</option>
         <option value="其他">其他</option>
       </select>
-      <label>生日</label><input id="pf_birth" type="date">
-      <label>自我介紹</label><textarea id="pf_bio" rows="3"></textarea>
-      <label>興趣標籤（以逗號分隔）</label><input id="pf_interests" placeholder="LOL, VALORANT, 登山">
-      <label>城市</label><input id="pf_city" placeholder="台北市">
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="card col">
-      <h3>定位</h3>
-      <label>緯度</label><input id="lat" readonly>
-      <label>經度</label><input id="lng" readonly>
-      <label>半徑（公里）</label><input id="radius" value="100">
-      <div class="muted" id="geoMsg" style="margin-top:6px">登入後會自動偵測並回報定位。</div>
-    </div>
-
-    <div class="card col">
-      <h3>附近（表單過濾配對）</h3>
-      <label>性別</label>
-      <select id="fil_gender">
-        <option value="">不限</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option>
-      </select>
-      <label>最小年齡</label><input id="fil_age_min" type="number" min="0" placeholder="">
-      <label>最大年齡</label><input id="fil_age_max" type="number" min="0" placeholder="">
-      <label>興趣（逗號，英文自動大寫）</label><input id="fil_interest" placeholder="LOL">
-      <div class="flex" style="gap:8px;margin-top:10px">
-        <button class="btn" id="btnNearby">搜尋</button>
-        <span id="nearbyMsg" class="muted"></span>
+      <label>生日</label>
+      <input id="birthday" type="date">
+      <label>城市</label>
+      <input id="city" placeholder="城市">
+      <label>自介</label>
+      <textarea id="bio" placeholder="簡短自我介紹"></textarea>
+      <label>興趣標籤（逗號分隔，英文自動大寫；中文原樣）</label>
+      <input id="interests" placeholder="LOL, VALORANT, 登山">
+      <div class="flex" style="margin-top:10px">
+        <button class="btn" id="btnGeo">回報定位</button>
+        <span class="muted" id="geoHint"></span>
       </div>
-      <div class="list" id="nearbyList" style="margin-top:10px"></div>
-      <button class="btn green" id="btnLikeSel" style="margin-top:8px">對勾選的人按讚</button>
-      <span id="likeMsg" class="muted"></span>
     </div>
   </div>
 
-  <div class="card">
-    <div class="flex" style="gap:8px"><h3 style="margin:0">我的配對</h3>
-      <button class="btn gray" id="btnLoadMatches">重新整理</button>
-      <span id="matchMsg" class="muted"></span>
+  <div class="row" style="margin-top:16px">
+    <!-- Nearby -->
+    <div class="card">
+      <h3>附近（篩選）</h3>
+      <div class="flex">
+        <select id="qGender" style="max-width:120px">
+          <option value="">性別不限</option>
+          <option value="男">男</option>
+          <option value="女">女</option>
+          <option value="其他">其他</option>
+        </select>
+        <input id="qMin" type="number" placeholder="最小年齡" style="max-width:120px">
+        <input id="qMax" type="number" placeholder="最大年齡" style="max-width:120px">
+        <input id="qInterest" placeholder="興趣關鍵字" style="max-width:180px">
+        <input id="qRadius" type="number" value="100" style="max-width:100px">
+        <button class="btn" id="btnSearch">搜尋</button>
+        <span class="muted">（半徑 km，預設 100）</span>
+      </div>
+      <div class="list" id="nearbyList"></div>
+      <div class="flex" style="margin-top:10px">
+        <button class="btn" id="btnPair">對勾選的人按讚</button>
+        <span class="muted" id="pairHint"></span>
+      </div>
     </div>
-    <div class="list" id="matchList" style="margin-top:10px"></div>
-  </div>
-</div>
 
-<!-- 聊天 Modal -->
-<div class="modal" id="chatModal">
-  <div class="box">
-    <div class="flex"><h3 id="chatTitle" style="margin:0">聊天</h3><button class="btn gray right" id="chatClose">關閉</button></div>
-    <div class="chat" id="chatBox"></div>
-    <div class="flex" style="gap:8px;margin-top:8px">
-      <input id="chatInput" placeholder="輸入訊息…"><button class="btn" id="chatSend">送出</button>
-      <span class="muted" id="chatMsg"></span>
+    <!-- Matches / Chat -->
+    <div class="card">
+      <div class="flex">
+        <h3 style="margin:0">我的配對</h3>
+        <button class="btn muted right" id="btnReloadMatches">重新整理</button>
+      </div>
+
+      <div class="list" id="matchList"></div>
+
+      <div id="chatPanel" style="display:none;margin-top:10px">
+        <h4 id="chatTitle" style="margin:10px 0">聊天室</h4>
+        <div class="chat" id="chatBox"></div>
+        <div class="flex" style="margin-top:8px">
+          <input id="chatInput" placeholder="輸入訊息…">
+          <button class="btn" id="btnSend">送出</button>
+        </div>
+      </div>
     </div>
   </div>
+
 </div>
 
 <script>
-  // —— 後端 API 位址（隱藏，使用同源） ——
-  const API = location.origin;
+const API = ''; // 同源部署下可留空
+const tokenSpan = document.getElementById('tokenSpan');
+const authHint = document.getElementById('authHint');
+const saveHint = document.getElementById('saveHint');
+const geoHint = document.getElementById('geoHint');
+const pairHint = document.getElementById('pairHint');
 
-  const $ = (s)=>document.querySelector(s);
-  const authStatus = $('#authStatus');
-  const tokenKey = 'authToken';
-  const setToken = t => localStorage.setItem(tokenKey, t);
-  const getToken = ()=> localStorage.getItem(tokenKey)||'';
-  const clearToken = ()=> localStorage.removeItem(tokenKey);
+let TOKEN = localStorage.getItem('token') || '';
 
-  function authHeader(){
-    const t = getToken();
-    return t ? {'Authorization':'Bearer '+t} : {};
+function setToken(t){
+  TOKEN = t || '';
+  localStorage.setItem('token', TOKEN);
+  tokenSpan.textContent = TOKEN ? TOKEN.slice(0,20)+'...' : '（未登入）';
+}
+
+setToken(TOKEN);
+
+// ====== 工具 ======
+function canonGenderToAPI(v){
+  if(!v) return null;
+  if(v === '男') return 'male';
+  if(v === '女') return 'female';
+  if(v === '其他') return 'other';
+  return v; // male/female/other
+}
+
+function showToast(el, msg, ok=true){
+  el.textContent = msg;
+  el.style.color = ok ? '#059669' : '#b91c1c';
+  setTimeout(()=> el.textContent='', 2500);
+}
+
+async function api(path, opt={}){
+  const headers = opt.headers || {};
+  if(TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  if(opt.json){
+    headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(opt.json);
   }
-  function refreshAuthStatus(){
-    if(getToken()){ authStatus.textContent='已登入'; authStatus.className='status ok'; }
-    else { authStatus.textContent='未登入'; authStatus.className='status bad'; }
+  const res = await fetch(API + path, {...opt, headers});
+  if(!res.ok){
+    const t = await res.text().catch(()=> '');
+    throw new Error(res.status + ' ' + res.statusText + ' ' + t);
   }
-  refreshAuthStatus();
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
 
-  // —— 註冊/登入 ——
-  $('#btnSignup').onclick = async ()=>{
-    const username = $('#lg_user').value.trim();
-    const password = $('#lg_pass').value;
-    $('#authMsg').textContent = '註冊中…';
-    try{
-      const r = await fetch(API+'/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,consent_agreed:true})});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      $('#authMsg').textContent = '註冊成功，請登入。';
-    }catch(e){ $('#authMsg').textContent = '失敗：'+e.message; }
+// ====== Auth ======
+document.getElementById('btnLogin').onclick = async () => {
+  const username = document.getElementById('authUser').value.trim();
+  const password = document.getElementById('authPass').value;
+  if(!username || !password){ showToast(authHint, '請輸入帳密', false); return; }
+  try{
+    const data = await api('/auth/login', {method:'POST', json:{username, password}});
+    setToken(data.access_token);
+    showToast(authHint, '登入成功');
+  }catch(e){ showToast(authHint, e.message, false); }
+};
+
+document.getElementById('btnSignup').onclick = async () => {
+  const username = document.getElementById('authUser').value.trim();
+  const password = document.getElementById('authPass').value;
+  if(!username || !password){ showToast(authHint, '請輸入帳密', false); return; }
+  try{
+    await api('/auth/signup', {method:'POST', json:{username, password}});
+    showToast(authHint, '註冊成功，請再登入');
+  }catch(e){ showToast(authHint, e.message, false); }
+};
+
+// ====== Profile ======
+document.getElementById('btnFetchMe').onclick = async () => {
+  try{
+    const me = await api('/me', {method:'GET'});
+    document.getElementById('displayName').value = me.display_name || '';
+    document.getElementById('gender').value =
+      me.gender === 'male' ? '男' : me.gender === 'female' ? '女' : (me.gender ? '其他' : '');
+    document.getElementById('birthday').value = me.birthday || '';
+    document.getElementById('city').value = me.city || '';
+    document.getElementById('bio').value = me.bio || '';
+    document.getElementById('interests').value = (me.interests || []).join(', ');
+    showToast(saveHint, '已讀取');
+  }catch(e){ showToast(saveHint, e.message, false); }
+};
+
+document.getElementById('btnSaveMe').onclick = async () => {
+  const body = {
+    display_name: document.getElementById('displayName').value.trim() || null,
+    gender: canonGenderToAPI(document.getElementById('gender').value),
+    birthday: document.getElementById('birthday').value || null,
+    city: document.getElementById('city').value.trim() || null,
+    bio: document.getElementById('bio').value.trim() || null,
+    interests: document.getElementById('interests').value || null,
   };
+  try{
+    // 正式用 PUT；後端也兼容 POST /me
+    await api('/me', {method:'PUT', json: body});
+    showToast(saveHint, '已儲存');
+  }catch(e){ showToast(saveHint, e.message, false); }
+};
 
-  $('#btnLogin').onclick = async ()=>{
-    const username = $('#lg_user').value.trim();
-    const password = $('#lg_pass').value;
-    $('#authMsg').textContent = '登入中…';
-    try{
-      const r = await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      setToken(d.access_token); refreshAuthStatus();
-      $('#authMsg').textContent = '登入成功！';
-      autoLoc(); // 登入後自動定位
-    }catch(e){ $('#authMsg').textContent = '失敗：'+e.message; }
+// ====== 定位（手動 + 自動） ======
+async function reportGeo(lat,lng){
+  try{
+    await api('/me/location', {method:'POST', json:{lat, lng}});
+    showToast(geoHint, '定位已回報');
+  }catch(e){ showToast(geoHint, e.message, false); }
+}
+document.getElementById('btnGeo').onclick = () => {
+  if(!navigator.geolocation){ showToast(geoHint,'瀏覽器不支援定位', false); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    reportGeo(pos.coords.latitude, pos.coords.longitude);
+  }, err => showToast(geoHint, '定位失敗：' + err.message, false), {enableHighAccuracy:true,timeout:8000});
+};
+// 自動回報（登入後 3 秒嘗試一次）
+setTimeout(()=>{ if(TOKEN) document.getElementById('btnGeo').click(); }, 3000);
+
+// ====== Nearby 搜尋 + 按讚配對 ======
+let lastNearby = [];
+document.getElementById('btnSearch').onclick = async () => {
+  const radius_km = Number(document.getElementById('qRadius').value || 100);
+  const payload = {
+    radius_km,
+    gender: canonGenderToAPI(document.getElementById('qGender').value),
+    min_age: document.getElementById('qMin').value || null,
+    max_age: document.getElementById('qMax').value || null,
+    interest: document.getElementById('qInterest').value || null,
   };
+  try{
+    const data = await api('/nearby', {method:'POST', json: payload});
+    lastNearby = data.users || [];
+    renderNearby();
+  }catch(e){ alert(e.message); }
+};
 
-  $('#btnLogout').onclick = ()=>{ clearToken(); refreshAuthStatus(); };
+function renderNearby(){
+  const box = document.getElementById('nearbyList');
+  box.innerHTML = '';
+  lastNearby.forEach(u=>{
+    const div = document.createElement('div');
+    div.className='item';
+    div.innerHTML = `
+      <div class="flex">
+        <h4>${u.display_name || '@'+u.username}</h4>
+        <span class="pill">${u.gender==='male'?'男':u.gender==='female'?'女':'其他'}</span>
+        <span class="pill">${u.age ?? '—'} 歲</span>
+        <span class="pill">${u.city || '—'}</span>
+        <span class="right muted">${u.distance_km} km</span>
+      </div>
+      <div class="muted" style="margin:6px 0">${u.bio || '（尚未撰寫自我介紹）'}</div>
+      <div>${(u.interests||[]).map(t=>`<span class="pill">${t}</span>`).join(' ')}</div>
+      <div class="flex" style="margin-top:8px">
+        <label class="flex"><input type="checkbox" data-id="${u.id}" ${u.liked?'checked':''}/> 勾選按讚</label>
+        ${u.matched?'<span class="pill">已互讚</span>':''}
+      </div>
+    `;
+    box.appendChild(div);
+  });
+}
 
-  // —— 讀取/儲存我的資料 ——
-  $('#btnLoadMe').onclick = loadMe;
-  async function loadMe(){
-    if(!getToken()){ $('#meMsg').textContent='請先登入'; return; }
-    $('#meMsg').textContent='讀取中…';
-    try{
-      const r = await fetch(API+'/me',{headers:{...authHeader()}});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      $('#pf_display').value = d.display_name||'';
-      $('#pf_gender').value = d.gender||'';
-      $('#pf_birth').value = d.birthday||'';
-      $('#pf_bio').value = d.bio||'';
-      $('#pf_interests').value = (d.interests||[]).join(', ');
-      $('#pf_city').value = d.city||'';
-      $('#lat').value = d.lat??''; $('#lng').value = d.lng??'';
-      $('#meMsg').textContent='完成';
-    }catch(e){ $('#meMsg').textContent='錯誤：'+e.message; }
-  }
+document.getElementById('btnPair').onclick = async () => {
+  const ids = [...document.querySelectorAll('#nearbyList input[type=checkbox]:checked')].map(x=>Number(x.dataset.id));
+  if(!ids.length){ showToast(pairHint, '尚未勾選', false); return; }
+  try{
+    const rs = await api('/pair', {method:'POST', json:{target_ids: ids}});
+    showToast(pairHint, `成功 ${rs.ok}、失敗 ${rs.fail}`);
+    document.getElementById('btnReloadMatches').click();
+  }catch(e){ showToast(pairHint, e.message, false); }
+};
 
-  $('#btnSaveMe').onclick = async ()=>{
-    if(!getToken()){ $('#meMsg').textContent='請先登入'; return; }
-    const interests = $('#pf_interests').value.split(',').map(x=>x.trim()).filter(Boolean);
-    $('#meMsg').textContent='儲存中…';
-    try{
-      const r = await fetch(API+'/me',{method:'PATCH',headers:{'Content-Type':'application/json',...authHeader()},
-        body:JSON.stringify({display_name:$('#pf_display').value.trim(),gender:$('#pf_gender').value,birthday:$('#pf_birth').value||null,
-          bio:$('#pf_bio').value,interests,city:$('#pf_city').value.trim()})});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      $('#meMsg').textContent='已儲存';
-    }catch(e){ $('#meMsg').textContent='失敗：'+e.message; }
-  };
+// ====== Matches + Chat ======
+document.getElementById('btnReloadMatches').onclick = async () => {
+  try{
+    const data = await api('/matches', {method:'GET'});
+    const box = document.getElementById('matchList');
+    box.innerHTML = '';
 
-  // —— 自動定位並回報 ——
-  async function autoLoc(){
-    if(!getToken()) return;
-    if(!navigator.geolocation){ $('#geoMsg').textContent='此裝置不支援定位'; return; }
-    $('#geoMsg').textContent='定位中…';
-    navigator.geolocation.getCurrentPosition(async pos=>{
-      const lat = pos.coords.latitude.toFixed(6), lng = pos.coords.longitude.toFixed(6);
-      $('#lat').value = lat; $('#lng').value = lng;
-      try{
-        const r = await fetch(API+'/me/location',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},
-          body:JSON.stringify({lat:Number(lat),lng:Number(lng)})});
-        if(!r.ok){ const d = await r.json(); throw new Error(d.detail||r.statusText); }
-        $('#geoMsg').textContent='定位已回報';
-      }catch(e){ $('#geoMsg').textContent='定位回報失敗：'+e.message; }
-    }, err=>{ $('#geoMsg').textContent='定位失敗'; });
-  }
-  // 自動嘗試
-  autoLoc();
+    (data.matches||[]).forEach(u=>{
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `
+        <div class="flex">
+          <h4>${u.display_name || '@'+u.username}</h4>
+          <span class="pill">${u.gender==='male'?'男':u.gender==='female'?'女':'其他'}</span>
+          <span class="pill">${u.age ?? '—'} 歲</span>
+          <span class="pill">${u.city || '—'}</span>
+          <span class="right muted">${u.distance_km ?? '—'} km</span>
+        </div>
+        <div class="muted" style="margin:6px 0">${u.bio || '（尚未撰寫自我介紹）'}</div>
+        <div>${(u.interests||[]).map(t=>`<span class="pill">${t}</span>`).join(' ')}</div>
+        <div style="margin-top:8px"><button class="btn" data-chat="${u.id}">開啟聊天室</button></div>
+      `;
+      box.appendChild(div);
+    });
 
-  // —— 附近搜尋 / 按讚 ——
-  $('#btnNearby').onclick = async ()=>{
-    if(!getToken()){ $('#nearbyMsg').textContent='請先登入'; return; }
-    const lat = Number($('#lat').value||0), lng = Number($('#lng').value||0), radius_km = Number($('#radius').value||100);
-    $('#nearbyMsg').textContent='搜尋中…';
-    try{
-      const r = await fetch(API+'/nearby',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},
-        body:JSON.stringify({lat,lng,radius_km})});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      const wantGender = $('#fil_gender').value;
-      const ageMin = Number($('#fil_age_min').value||0), ageMax = Number($('#fil_age_max').value||999);
-      let interest = ($('#fil_interest').value||'').trim(); if(interest) interest = interest.toUpperCase();
+    box.querySelectorAll('button[data-chat]').forEach(btn=>{
+      btn.onclick = () => openChat(Number(btn.dataset.chat));
+    });
+  }catch(e){ alert(e.message); }
+};
 
-      const list = d.users.filter(u=>{
-        if(wantGender && u.gender!==wantGender) return false;
-        const age = u.birthday ? Math.max(0, Math.floor((Date.now()-Date.parse(u.birthday))/31557600000)) : 0;
-        if(ageMin && age<ageMin) return false;
-        if(ageMax && age>ageMax) return false;
-        if(interest && !(u.interests||[]).map(x=>x.toUpperCase()).includes(interest)) return false;
-        return true;
-      });
+let WS = null, PEER = null;
+async function openChat(peerId){
+  // 拉歷史
+  const hist = await api(`/chat/history/${peerId}`, {method:'GET'});
+  const panel = document.getElementById('chatPanel');
+  const box = document.getElementById('chatBox');
+  document.getElementById('chatTitle').textContent = `聊天室（對象 #${peerId}）`;
+  box.innerHTML = '';
+  hist.forEach(m=>pushMsg(m, m.sender_id===peerId?'theirs':'mine'));
+  panel.style.display='block';
 
-      const box = $('#nearbyList'); box.innerHTML='';
-      list.forEach(u=>{
-        const dkm = (u.distance_km??0).toFixed(3);
-        const div = document.createElement('div'); div.className='match';
-        div.innerHTML = `
-          <div class="flex"><label class="flex" style="gap:6px"><input type="checkbox" class="pick" data-user="${u.username}">
-            <b>${(u.display_name||u.username)}</b></label><span class="right muted">${u.gender||''} / ${u.city||''} / ${dkm} km</span></div>
-          <div class="muted">${(u.bio||'')}</div>
-          <div>${(u.interests||[]).map(i=>`<span class="tag">${i}</span>`).join('')}</div>`;
-        box.appendChild(div);
-      });
-      $('#nearbyMsg').textContent = `找到 ${list.length} 位`;
-    }catch(e){ $('#nearbyMsg').textContent='錯誤：'+e.message; }
-  };
-
-  $('#btnLikeSel').onclick = async ()=>{
-    const picks = [...document.querySelectorAll('.pick:checked')].map(x=>x.dataset.user);
-    if(!picks.length){ $('#likeMsg').textContent='請勾選'; return; }
-    $('#likeMsg').textContent='送出中…';
-    let ok=0, match=0;
-    for(const u of picks){
-      try{
-        const r = await fetch(API+'/like',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({target:u})});
-        const d = await r.json(); if(r.ok){ ok++; if(d.matched) match++; }
-      }catch{}
+  // 建立 WS
+  if(WS) try{ WS.close(); }catch{}
+  PEER = peerId;
+  WS = new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/chat?token=${encodeURIComponent(TOKEN)}&peer_id=${peerId}`);
+  WS.onmessage = (ev)=>{
+    const data = JSON.parse(ev.data||'{}');
+    if(data.type==='message'){
+      pushMsg({content:data.content, sender_id:data.sender_id}, data.sender_id===peerId?'theirs':'mine');
     }
-    $('#likeMsg').textContent=`完成：成功 ${ok}，其中配對 ${match}`;
   };
+}
 
-  // —— 我的配對 + 聊天 ——
-  $('#btnLoadMatches').onclick = loadMatches;
-  async function loadMatches(){
-    if(!getToken()){ $('#matchMsg').textContent='請先登入'; return; }
-    $('#matchMsg').textContent='讀取中…';
-    try{
-      const r = await fetch(API+'/matches',{headers:{...authHeader()}});
-      const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.statusText);
-      const box = $('#matchList'); box.innerHTML='';
-      d.matches.forEach(u=>{
-        const age = u.birthday ? Math.max(0, Math.floor((Date.now()-Date.parse(u.birthday))/31557600000)) : '';
-        const div = document.createElement('div'); div.className='match';
-        div.innerHTML = `
-          <h4>${u.display_name||u.username}</h4>
-          <div class="muted">@${u.username} ｜ ${u.gender||''} ${age?`｜ ${age} 歲`:''} ｜ ${u.city||''}</div>
-          <div class="muted" style="margin:6px 0">${u.bio||'（尚未撰寫自我介紹）'}</div>
-          <div>${(u.interests||[]).map(i=>`<span class="tag">${i}</span>`).join('')}</div>
-          <div class="flex" style="margin-top:8px"><span class="muted"></span>
-            <button class="btn right openChat" data-user="${u.username}" data-name="${u.display_name||u.username}">開啟聊天</button>
-          </div>`;
-        box.appendChild(div);
-      });
-      [...document.querySelectorAll('.openChat')].forEach(btn=>btn.onclick=()=>openChat(btn.dataset.user, btn.dataset.name));
-      $('#matchMsg').textContent = `共 ${d.matches.length} 組配對`;
-    }catch(e){ $('#matchMsg').textContent='錯誤：'+e.message; }
-  }
+function pushMsg(m, who){
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'msg ' + (who==='mine'?'mine':'theirs');
+  div.textContent = m.content;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
 
-  // 聊天
-  let ws=null, chattingUser='';
-  async function openChat(username, display){
-    if(!getToken()) return;
-    chattingUser = username;
-    $('#chatTitle').textContent = `與 ${display} 的聊天`;
-    $('#chatBox').innerHTML = ''; $('#chatMsg').textContent='';
-    $('#chatModal').style.display='flex';
+document.getElementById('btnSend').onclick = () => {
+  const ipt = document.getElementById('chatInput');
+  const t = ipt.value.trim();
+  if(!t || !WS || WS.readyState!==1) return;
+  WS.send(t);
+  ipt.value='';
+};
 
-    // 載入歷史
-    try{
-      const r = await fetch(`${API}/messages/${username}`,{headers:{...authHeader()}});
-      const d = await r.json();
-      if(r.ok){ d.messages.forEach(addBubble); }
-    }catch{}
-
-    // 連線 websocket
-    try{
-      const proto = location.protocol==='https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(getToken())}&peer=${encodeURIComponent(username)}`);
-      ws.onmessage = (ev)=>{ try{ const m = JSON.parse(ev.data); addBubble(m); }catch{} };
-      ws.onclose = ()=>{ /* no-op */ };
-    }catch(e){ $('#chatMsg').textContent='WebSocket 連線失敗'; }
-  }
-  function addBubble(m){
-    const me = $('#lg_user').value.trim();
-    const isMe = (m.sender===me);
-    const div = document.createElement('div'); div.className='bubble'+(isMe?' me':'');
-    div.textContent = `${m.sender}: ${m.content}`;
-    $('#chatBox').appendChild(div); $('#chatBox').scrollTop = 1e9;
-  }
-  $('#chatSend').onclick = async ()=>{
-    const txt = $('#chatInput').value.trim(); if(!txt) return;
-    $('#chatInput').value='';
-    // 先走 REST（後端會廣播 WS）
-    try{
-      const r = await fetch(`${API}/messages/${chattingUser}`,{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({content:txt})});
-      if(!r.ok){ const d = await r.json(); throw new Error(d.detail||r.statusText); }
-    }catch(e){ $('#chatMsg').textContent='送出失敗：'+e.message; }
-  };
-  $('#chatClose').onclick = ()=>{ $('#chatModal').style.display='none'; try{ ws && ws.close(); }catch{} };
-
+// 啟動預設：嘗試載入自己與配對清單
+if(TOKEN){
+  document.getElementById('btnFetchMe').click();
+  document.getElementById('btnReloadMatches').click();
+  document.getElementById('btnSearch').click();
+}
 </script>
 </body>
 </html>
