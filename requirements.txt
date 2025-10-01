@@ -1,10 +1,10 @@
 ﻿fastapi==0.118.0
-uvicorn[standard]==0.37.0   # 改用 [standard] 會自帶 websockets/httptools 等
+uvicorn[standard]==0.37.0
 SQLAlchemy==2.0.43
 pydantic==2.11.9
 email-validator==2.3.0
 python-multipart==0.0.20
 passlib==1.7.4
 pyjwt==2.10.1
-psycopg[binary]==3.2.1
+psycopg[binary]==3.2.10
 gunicorn==23.0.0
