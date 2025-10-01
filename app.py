@@ -17,10 +17,11 @@ from passlib.context import CryptContext
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, DateTime, Text,
-    ForeignKey, UniqueConstraint, select, func
+    ForeignKey, UniqueConstraint, select
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import inspect   # ← 新增：跨資料庫的欄位查詢
 
 # =========================================================
 # 基本設定
@@ -58,7 +59,7 @@ class User(Base):
     # 個人檔案
     nickname = Column(String(120), nullable=True)
     gender = Column(String(10), nullable=True)        # 'male' / 'female' / None
-    birthday = Column(String(20), nullable=True)      # ISO date string 'YYYY-MM-DD'
+    birthday = Column(String(20), nullable=True)      # ISO date string
     bio = Column(Text, nullable=True)
     city = Column(String(120), nullable=True)
     interests_json = Column(Text, nullable=True)      # JSON 字串，list[str]
@@ -98,20 +99,25 @@ class ChatMessage(Base):
 
 
 # =========================================================
-# 輕量遷移
+# 輕量遷移（修正：SQLAlchemy 2.0 需用 exec_driver_sql 或 inspector）
 # =========================================================
 def create_db():
     Base.metadata.create_all(engine)
 
 
 def _table_has_column(conn, table: str, col: str) -> bool:
-    if DATABASE_URL.startswith("sqlite"):
-        res = conn.execute(f"PRAGMA table_info('{table}')").fetchall()
-        cols = {r[1] for r in res}
+    # SQLite 走 PRAGMA，但要用 exec_driver_sql（SQLA 2.0）
+    if engine.dialect.name == "sqlite":
+        res = conn.exec_driver_sql(f"PRAGMA table_info('{table}')").fetchall()
+        cols = {r[1] for r in res}  # 第二欄是欄名
         return col in cols
-    else:
-        # 其他 DB 這裡可擴充
-        return True
+    # 其他資料庫使用 inspector
+    ins = inspect(conn)
+    try:
+        cols = {c["name"] for c in ins.get_columns(table)}
+    except Exception:
+        return False
+    return col in cols
 
 
 def migrate_users_table():
@@ -165,7 +171,6 @@ class ProfileIn(BaseModel):
     city: Optional[str] = None
     interests: List[str] = []
 
-    # 把 "" 轉 None；性別正規化
     @field_validator("nickname", "gender", "birthday", "bio", "city", mode="before")
     @classmethod
     def empty_to_none(cls, v):
@@ -190,24 +195,23 @@ class ProfileIn(BaseModel):
     @field_validator("interests", mode="before")
     @classmethod
     def normalize_interests(cls, v):
-        # 前端已經做過處理；這裡再做最後保險
         if v is None:
             return []
-        if isinstance(v, str):
-            parts = [x.strip() for x in re.split(r"[,\s，、]+", v) if x.strip()]
-            out = []
-            seen = set()
-            for p in parts:
-                pv = p.upper() if any(ch.isalnum() for ch in p) else p
-                if pv not in seen:
-                    seen.add(pv)
-                    out.append(pv)
-            return out
         if isinstance(v, list):
             out, seen = [], set()
             for p in v:
                 if not isinstance(p, str):
                     continue
+                pv = p.upper() if any(ch.isalnum() for ch in p) else p
+                if pv not in seen:
+                    seen.add(pv)
+                    out.append(pv)
+            return out
+        if isinstance(v, str):
+            import re
+            parts = [x.strip() for x in re.split(r"[,\s，、]+", v) if x.strip()]
+            out, seen = [], set()
+            for p in parts:
                 pv = p.upper() if any(ch.isalnum() for ch in p) else p
                 if pv not in seen:
                     seen.add(pv)
@@ -246,7 +250,7 @@ app = FastAPI(title="Dating Prototype + Chat")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # 若需更嚴格可改為你的前端網域
+    allow_origins=["*"],   # 如需嚴格限制可改你的前端網域
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -348,7 +352,6 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # =========================================================
 @app.exception_handler(Exception)
 async def all_exception_handler(_r: Request, exc: Exception):
-    # 若要除錯可印出 exc
     return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
 
 
@@ -365,7 +368,6 @@ def index():
     fp = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(fp):
         return FileResponse(fp)
-    # 簡單引導
     html = """
     <h2>🚀 服務已啟動</h2>
     <p>找不到 <code>static/index.html</code>，請確認前端檔案已放好。</p>
@@ -459,7 +461,6 @@ def update_location(payload: LocationIn, request: Request, db: Session = Depends
 def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
     me = current_user(request, db)
 
-    # 基準座標：優先 payload，否則使用自己的定位
     origin_lat = payload.lat if payload.lat is not None else me.lat
     origin_lng = payload.lng if payload.lng is not None else me.lng
     if origin_lat is None or origin_lng is None:
@@ -467,7 +468,6 @@ def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
 
     radius_km = float(payload.radius_km or 5.0)
 
-    # 找出有定位的其他人
     stmt = select(User).where(
         User.id != me.id,
         User.lat.isnot(None),
@@ -479,19 +479,16 @@ def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
     for u in users:
         d = haversine_km(origin_lat, origin_lng, u.lat, u.lng)
         if d <= radius_km:
-            # 性別過濾
             if payload.gender:
                 g = (payload.gender or "").strip().lower()
                 want = "male" if g in ("male", "m", "男") else "female" if g in ("female", "f", "女") else None
                 if want and (u.gender or "") != want:
                     continue
-            # 年齡過濾
             age = age_from_birthday(u.birthday)
             if payload.min_age is not None and age is not None and age < payload.min_age:
                 continue
             if payload.max_age is not None and age is not None and age > payload.max_age:
                 continue
-            # 興趣過濾（交集）
             if payload.interests:
                 target = set(interests_to_list(u.interests_json))
                 want = set([s.upper() if any(ch.isalnum() for ch in s) else s for s in payload.interests])
@@ -517,7 +514,6 @@ def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
 
 @app.get("/matches")
 def matches(request: Request, db: Session = Depends(get_db)):
-    """簡單實作：回傳最近 20 位（有定位），不含自己。"""
     me = current_user(request, db)
     if me.lat is None or me.lng is None:
         return {"matches": []}
