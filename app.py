@@ -1,171 +1,276 @@
 # app.py
-import os, math, json
+import os
+import math
+import json
 from datetime import datetime, timedelta, date
-from typing import Optional, List, Dict, Set
+from typing import Optional, List, Tuple, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    Query,
+)
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel, EmailStr, field_validator
-from passlib.context import CryptContext
+
 import jwt
 from jwt import InvalidTokenError
 
-from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, Date, DateTime, Boolean, Text,
-    UniqueConstraint
-)
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from sqlalchemy.exc import IntegrityError
+from passlib.context import CryptContext
 
-APP_NAME = "遊戲配對網"
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    Boolean,
+    Text,
+    ForeignKey,
+    UniqueConstraint,
+    and_,
+    or_,
+)
+from sqlalchemy.orm import (
+    sessionmaker,
+    declarative_base,
+    Session,
+    relationship,
+)
+
+# ----------------------------
+# 環境設定
+# ----------------------------
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")  # 正式請改環境變數
 JWT_ALG = "HS256"
-ACCESS_TOKEN_TTL_MIN = 24 * 60
+ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dating.db")
+
+# 強制使用 psycopg v3 驅動（若是 Postgres）
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
 engine_kwargs = {"echo": False, "future": True}
-connect_args = {}
+connect_args: Dict[str, Any] = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args, **engine_kwargs)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
+# 密碼雜湊：用 pbkdf2_sha256（免安裝 C 編譯）
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+
+# ----------------------------
+# 資料表
+# ----------------------------
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
     id = Column(Integer, primary_key=True)
     username = Column(String(50), nullable=False, unique=True, index=True)
     email = Column(String(200), nullable=True)
     password_hash = Column(String(200), nullable=False)
-    display_name = Column(String(60), nullable=True)
-    gender = Column(String(10), nullable=True)  # 男/女/其他
-    birthday = Column(Date, nullable=True)
-    bio = Column(Text, nullable=True)
-    interests_json = Column(Text, nullable=True)
+
+    # 個人檔案
+    display_name = Column(String(60), nullable=True)   # 暱稱
+    gender = Column(String(10), nullable=True)         # male/female/other
+    birthday = Column(DateTime, nullable=True)
     city = Column(String(60), nullable=True)
+    bio = Column(Text, nullable=True)
+    interests = Column(Text, nullable=True)            # 以逗號儲存 ["LOL","VALORANT","登山"] => "LOL,VALORANT,登山"
+
+    # 定位
     lat = Column(Float, nullable=True)
     lng = Column(Float, nullable=True)
-    consent_agreed_at = Column(DateTime, nullable=True)
-    geo_precise_opt_in = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # 偏好：是否願意回報精準定位
+    geo_precise_opt_in = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_profile_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 方便篩選的索引
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_users_username"),
+    )
+
+
 class Like(Base):
+    """
+    按讚/喜歡（建立配對的前提）
+    user_id 喜歡 target_id；雙向存在即為配對
+    """
     __tablename__ = "likes"
-    __table_args__ = (UniqueConstraint("user_id", "target_id", name="uq_like_pair"),)
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, index=True, nullable=False)
-    target_id = Column(Integer, index=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    target_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "target_id", name="uq_like_pair"),
+    )
+
 
 class Message(Base):
+    """
+    聊天訊息
+    """
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
-    room = Column(String(50), index=True, nullable=False)  # "{min_id}:{max_id}"
-    sender_id = Column(Integer, index=True, nullable=False)
-    recipient_id = Column(Integer, index=True, nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    recipient_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+
 def create_db():
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(bind=engine)
 
-def _table_has_column(conn, table: str, col: str) -> bool:
-    rows = conn.exec_driver_sql(f"PRAGMA table_info('{table}')").fetchall()
-    names = {r[1] for r in rows}
-    return col in names
 
-def migrate_users_table():
-    with engine.begin() as conn:
-        stmts = []
-        need = lambda c: not _table_has_column(conn, "users", c)
-        if need("display_name"):      stmts.append("ALTER TABLE users ADD COLUMN display_name TEXT")
-        if need("gender"):            stmts.append("ALTER TABLE users ADD COLUMN gender TEXT")
-        if need("birthday"):          stmts.append("ALTER TABLE users ADD COLUMN birthday DATE")
-        if need("bio"):               stmts.append("ALTER TABLE users ADD COLUMN bio TEXT")
-        if need("interests_json"):    stmts.append("ALTER TABLE users ADD COLUMN interests_json TEXT")
-        if need("city"):              stmts.append("ALTER TABLE users ADD COLUMN city TEXT")
-        if need("lat"):               stmts.append("ALTER TABLE users ADD COLUMN lat REAL")
-        if need("lng"):               stmts.append("ALTER TABLE users ADD COLUMN lng REAL")
-        if need("consent_agreed_at"): stmts.append("ALTER TABLE users ADD COLUMN consent_agreed_at DATETIME")
-        if need("geo_precise_opt_in"):stmts.append("ALTER TABLE users ADD COLUMN geo_precise_opt_in INTEGER DEFAULT 0")
-        if need("created_at"):        stmts.append("ALTER TABLE users ADD COLUMN created_at DATETIME")
-        if need("updated_at"):        stmts.append("ALTER TABLE users ADD COLUMN updated_at DATETIME")
-        for s in stmts:
-            conn.exec_driver_sql(s)
+# ----------------------------
+# Pydantic Schemas
+# ----------------------------
+def _normalize_interests_to_store(raw: Optional[str | List[str]]) -> str:
+    # 接受逗號字串或陣列；ASCII 單字轉大寫；中文維持
+    if not raw:
+        return ""
+    if isinstance(raw, str):
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+    else:
+        parts = [str(p).strip() for p in raw if str(p).strip()]
+    norm: List[str] = []
+    for p in parts:
+        # 如果是英文字母/數字/空白/符號混合，嘗試轉大寫；中文保持
+        try:
+            if p.encode("ascii", errors="ignore"):
+                # ASCII 轉大寫
+                norm.append(p.upper())
+            else:
+                norm.append(p)
+        except Exception:
+            norm.append(p)
+    # 去重
+    seen = set()
+    out = []
+    for x in norm:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return ",".join(out)
+
+
+def _interests_to_list_for_api(stored: Optional[str]) -> List[str]:
+    if not stored:
+        return []
+    return [p for p in (s.strip() for s in stored.split(",")) if p]
+
 
 class SignupIn(BaseModel):
     username: str
     password: str
     email: Optional[EmailStr] = None
-    consent_agreed: bool
-    @field_validator("email", mode="before")
-    @classmethod
-    def _empty_to_none(cls, v):
-        if isinstance(v, str) and v.strip() == "":
-            return None
-        return v
+
 
 class LoginIn(BaseModel):
     username: str
     password: str
 
+
 class ProfileIn(BaseModel):
     display_name: Optional[str] = None
-    gender: Optional[str] = None
+    gender: Optional[str] = None  # male/female/other
     birthday: Optional[date] = None
-    bio: Optional[str] = None
-    interests: Optional[List[str]] = None
     city: Optional[str] = None
+    bio: Optional[str] = None
+    interests: Optional[List[str] | str] = None
+    geo_precise_opt_in: Optional[bool] = None
 
-class MeOut(BaseModel):
+    @field_validator("gender")
+    @classmethod
+    def chk_gender(cls, v: Optional[str]):
+        if v is None:
+            return v
+        v2 = v.lower().strip()
+        if v2 not in {"male", "female", "other"}:
+            raise ValueError("gender must be male / female / other")
+        return v2
+
+
+class ProfileOut(BaseModel):
     id: int
     username: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    gender: Optional[str] = None
-    birthday: Optional[date] = None
-    bio: Optional[str] = None
-    interests: List[str] = []
-    city: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-    updated_at: Optional[datetime] = None
-    consent_agreed_at: Optional[datetime] = None
-    geo_precise_opt_in: bool = False
+    display_name: Optional[str]
+    gender: Optional[str]
+    birthday: Optional[date]
+    city: Optional[str]
+    bio: Optional[str]
+    interests: List[str]
+    lat: Optional[float]
+    lng: Optional[float]
+    updated_at: Optional[datetime]
+
 
 class LocationIn(BaseModel):
     lat: float
     lng: float
 
+
 class NearbyIn(BaseModel):
-    lat: float
-    lng: float
     radius_km: float = 100.0
+    gender: Optional[str] = None
+    min_age: Optional[int] = None
+    max_age: Optional[int] = None
+    interest: Optional[str] = None  # 單個字串，部分比對即可（已做大寫）
 
-class LikeIn(BaseModel):
-    target: str
 
-class SendIn(BaseModel):
+class PairIn(BaseModel):
+    target_ids: List[int]
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    sender_id: int
+    recipient_id: int
     content: str
+    created_at: datetime
 
-app = FastAPI(title=f"{APP_NAME} 後端 API")
+
+# ----------------------------
+# FastAPI App
+# ----------------------------
+app = FastAPI(title="遊戲配對網後端")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],  # 若要更嚴謹，請改成你的前端網域
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-@app.exception_handler(Exception)
-async def all_exception_handler(_req: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+# ----------------------------
+# 共用工具
+# ----------------------------
 def get_db() -> Session:
     db = SessionLocal()
     try:
@@ -173,336 +278,426 @@ def get_db() -> Session:
     finally:
         db.close()
 
+
 def create_access_token(sub: str, ttl_minutes: int = ACCESS_TOKEN_TTL_MIN) -> str:
-    payload = {"sub": sub, "exp": datetime.utcnow() + timedelta(minutes=ttl_minutes)}
+    payload = {
+        "sub": sub,
+        "exp": datetime.utcnow() + timedelta(minutes=ttl_minutes),
+    }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
-def get_username_from_token(token: str) -> str:
+
+def decode_access_token(token: str) -> str:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return str(payload["sub"])
+        return payload["sub"]
     except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="無效或過期的授權")
+        raise HTTPException(status_code=401, detail="token invalid or expired")
+
 
 def get_bearer_token(request: Request) -> str:
-    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    auth = request.headers.get("Authorization", "")
     if auth and auth.lower().startswith("bearer "):
         return auth.split(" ", 1)[1].strip()
-    raise HTTPException(status_code=401, detail="缺少 Bearer Token")
+    raise HTTPException(status_code=401, detail="missing bearer token")
+
 
 def current_user(db: Session, token: str) -> User:
-    username = get_username_from_token(token)
+    username = decode_access_token(token)
     user = db.query(User).filter(User.username == username).first()
     if not user:
-        raise HTTPException(status_code=401, detail="用戶不存在")
+        raise HTTPException(status_code=401, detail="user not found")
     return user
 
-def to_interests_json(arr: Optional[List[str]]) -> Optional[str]:
-    if not arr: return None
-    norm = []
-    for s in arr:
-        s = (s or "").strip()
-        if not s: continue
-        norm.append(s.upper() if s.isascii() else s)
-    seen, out = set(), []
-    for s in norm:
-        if s not in seen:
-            seen.add(s); out.append(s)
-    return json.dumps(out, ensure_ascii=False)
 
-def from_interests_json(s: Optional[str]) -> List[str]:
-    if not s: return []
-    try:
-        return [str(x) for x in json.loads(s)]
-    except Exception:
-        return []
+def calc_age(b: Optional[datetime]) -> Optional[int]:
+    if not b:
+        return None
+    d = b.date()
+    today = date.today()
+    return today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
-    p1 = math.radians(lat1); p2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1); dlmb = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dlmb/2)**2
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
     return 2 * R * math.asin(math.sqrt(a))
 
-def room_key_for(a_id: int, b_id: int) -> str:
-    return f"{min(a_id, b_id)}:{max(a_id, b_id)}"
 
+def is_matched(db: Session, uid: int, vid: int) -> bool:
+    # 雙向 Like 即為配對
+    a = db.query(Like).filter(and_(Like.user_id == uid, Like.target_id == vid)).first()
+    b = db.query(Like).filter(and_(Like.user_id == vid, Like.target_id == uid)).first()
+    return (a is not None) and (b is not None)
+
+
+# ----------------------------
+# 例外處理（統一 500 介面）
+# ----------------------------
+@app.exception_handler(Exception)
+async def all_exception_handler(_req: Request, exc: Exception):
+    # 你也可加入 log
+    return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
+
+
+# ----------------------------
+# Routes
+# ----------------------------
 @app.get("/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
+
 @app.post("/auth/signup")
 def signup(payload: SignupIn, db: Session = Depends(get_db)):
-    if not payload.consent_agreed:
-        raise HTTPException(status_code=400, detail="需勾選同意條款後才能註冊")
     if db.query(User.id).filter(User.username == payload.username).first():
-        raise HTTPException(status_code=400, detail="username 已使用")
-    try:
-        u = User(
-            username=payload.username.strip(),
-            email=(payload.email or None),
-            password_hash=pwd_context.hash(payload.password),
-            consent_agreed_at=datetime.utcnow(),
-        )
-        db.add(u)
-        db.commit()
-        return {"ok": True}
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="帳號已存在")
-    except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"detail": f"server error: {str(e)}"})
+        raise HTTPException(status_code=400, detail="username already used")
+
+    pw = pwd_context.hash(payload.password)
+    user = User(
+        username=payload.username,
+        email=payload.email,
+        password_hash=pw,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"ok": True, "user_id": user.id}
+
 
 @app.post("/auth/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
-    u = db.query(User).filter(User.username == payload.username).first()
-    if not u or not pwd_context.verify(payload.password, u.password_hash):
-        raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
-    return {"access_token": create_access_token(u.username), "token_type": "bearer"}
+    user = db.query(User).filter(User.username == payload.username).first()
+    if not user or not pwd_context.verify(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="username or password incorrect")
+    token = create_access_token(user.username)
+    return {"access_token": token, "token_type": "bearer"}
 
-@app.get("/me", response_model=MeOut)
+
+@app.get("/me", response_model=ProfileOut)
 def get_me(request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
-    u = current_user(db, token)
-    return MeOut(
-        id=u.id, username=u.username, email=u.email,
-        display_name=u.display_name, gender=u.gender, birthday=u.birthday,
-        bio=u.bio, interests=from_interests_json(u.interests_json), city=u.city,
-        lat=u.lat, lng=u.lng, updated_at=u.updated_at,
-        consent_agreed_at=u.consent_agreed_at, geo_precise_opt_in=bool(u.geo_precise_opt_in),
+    me = current_user(db, token)
+    return ProfileOut(
+        id=me.id,
+        username=me.username,
+        display_name=me.display_name,
+        gender=me.gender,
+        birthday=me.birthday.date() if me.birthday else None,
+        city=me.city,
+        bio=me.bio,
+        interests=_interests_to_list_for_api(me.interests),
+        lat=me.lat,
+        lng=me.lng,
+        updated_at=me.updated_at,
     )
 
-@app.patch("/me")
-def patch_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
+
+@app.put("/me")
+def update_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
-    u = current_user(db, token)
+    me = current_user(db, token)
+
     if payload.display_name is not None:
-        u.display_name = payload.display_name.strip() or None
+        me.display_name = payload.display_name
     if payload.gender is not None:
-        g = (payload.gender or "").strip().lower()
-        if g in ("男", "male", "m"): u.gender = "男"
-        elif g in ("女", "female", "f"): u.gender = "女"
-        elif g: u.gender = "其他"
-        else: u.gender = None
+        me.gender = payload.gender
     if payload.birthday is not None:
-        u.birthday = payload.birthday
-    if payload.bio is not None:
-        u.bio = payload.bio.strip() or None
-    if payload.interests is not None:
-        u.interests_json = to_interests_json(payload.interests)
+        # 存 datetime 方便通用
+        me.birthday = datetime(payload.birthday.year, payload.birthday.month, payload.birthday.day)
     if payload.city is not None:
-        u.city = payload.city.strip() or None
-    db.add(u); db.commit()
+        me.city = payload.city
+    if payload.bio is not None:
+        me.bio = payload.bio
+    if payload.interests is not None:
+        me.interests = _normalize_interests_to_store(payload.interests)
+    if payload.geo_precise_opt_in is not None:
+        me.geo_precise_opt_in = bool(payload.geo_precise_opt_in)
+
+    db.add(me)
+    db.commit()
     return {"ok": True}
+
 
 @app.post("/me/location")
 def update_location(payload: LocationIn, request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
-    u = current_user(db, token)
-    u.lat = float(payload.lat); u.lng = float(payload.lng)
-    db.add(u); db.commit()
+    me = current_user(db, token)
+
+    me.lat = float(payload.lat)
+    me.lng = float(payload.lng)
+    me.updated_at = datetime.utcnow()
+    db.add(me)
+    db.commit()
     return {"ok": True}
+
 
 @app.post("/nearby")
 def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
     token = get_bearer_token(request)
     me = current_user(db, token)
-    users = (
-        db.query(User)
-        .filter(User.id != me.id)
-        .filter(User.lat.isnot(None), User.lng.isnot(None))
-        .all()
-    )
-    out = []
-    for u in users:
-        d = haversine_km(payload.lat, payload.lng, u.lat, u.lng)
-        if d <= max(0.0, payload.radius_km):
-            out.append({
-                "username": u.username,
-                "display_name": u.display_name or u.username,
-                "gender": u.gender,
-                "birthday": u.birthday.isoformat() if u.birthday else None,
-                "bio": u.bio,
-                "interests": from_interests_json(u.interests_json),
-                "city": u.city,
-                "distance_km": round(d, 2),
-            })
-    out.sort(key=lambda x: x["distance_km"])
-    return {"users": out}
+    if me.lat is None or me.lng is None:
+        raise HTTPException(status_code=400, detail="please set your location first")
 
-@app.post("/like")
-def like_user(payload: LikeIn, request: Request, db: Session = Depends(get_db)):
-    me = current_user(db, get_bearer_token(request))
-    target = db.query(User).filter(User.username == payload.target).first()
-    if not target or target.id == me.id:
-        raise HTTPException(status_code=400, detail="對象不存在")
-    try:
-        db.add(Like(user_id=me.id, target_id=target.id))
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-    mutual = db.query(Like).filter(Like.user_id == target.id, Like.target_id == me.id).first() is not None
-    return {"ok": True, "matched": mutual}
+    q = db.query(User).filter(User.id != me.id)
+
+    if payload.gender:
+        q = q.filter(User.gender == payload.gender.lower())
+
+    users = q.filter(User.lat.isnot(None), User.lng.isnot(None)).all()
+
+    # 年齡/興趣篩選
+    result = []
+    interest_upper = payload.interest.upper().strip() if payload.interest else None
+
+    for u in users:
+        d_km = haversine_km(me.lat, me.lng, u.lat, u.lng)
+        if d_km > (payload.radius_km or 100.0):
+            continue
+
+        u_age = calc_age(u.birthday)
+        if payload.min_age is not None and (u_age is None or u_age < payload.min_age):
+            continue
+        if payload.max_age is not None and (u_age is None or u_age > payload.max_age):
+            continue
+
+        if interest_upper:
+            arr = _interests_to_list_for_api(u.interests)
+            if not any(interest_upper in s.upper() for s in arr):
+                continue
+
+        result.append({
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "gender": u.gender,
+            "age": u_age,
+            "city": u.city,
+            "distance_km": round(d_km, 3),
+            "interests": _interests_to_list_for_api(u.interests),
+            "bio": u.bio or "",
+            "liked": db.query(Like.id).filter(and_(Like.user_id == me.id, Like.target_id == u.id)).first() is not None,
+            "matched": is_matched(db, me.id, u.id),
+        })
+
+    # 依距離排序
+    result.sort(key=lambda x: x["distance_km"])
+    return {"count": len(result), "users": result}
+
+
+@app.post("/pair")
+def pair_users(payload: PairIn, request: Request, db: Session = Depends(get_db)):
+    token = get_bearer_token(request)
+    me = current_user(db, token)
+
+    ok = 0
+    fail = 0
+    for tid in payload.target_ids:
+        if tid == me.id:
+            fail += 1
+            continue
+        if not db.query(User.id).filter(User.id == tid).first():
+            fail += 1
+            continue
+        exists = db.query(Like.id).filter(and_(Like.user_id == me.id, Like.target_id == tid)).first()
+        if exists:
+            fail += 1
+            continue
+        like = Like(user_id=me.id, target_id=tid)
+        db.add(like)
+        try:
+            db.commit()
+            ok += 1
+        except Exception:
+            db.rollback()
+            fail += 1
+
+    return {"ok": ok, "fail": fail}
+
 
 @app.get("/matches")
 def get_matches(request: Request, db: Session = Depends(get_db)):
-    me = current_user(db, get_bearer_token(request))
-    liked_ids = {r.target_id for r in db.query(Like.target_id).filter(Like.user_id == me.id).all()}
-    liked_me_ids = {r.user_id for r in db.query(Like.user_id).filter(Like.target_id == me.id).all()}
-    match_ids = liked_ids & liked_me_ids
-    if not match_ids: return {"matches": []}
-    users = db.query(User).filter(User.id.in_(list(match_ids))).all()
+    token = get_bearer_token(request)
+    me = current_user(db, token)
+
+    # 我喜歡的
+    mine = db.query(Like).filter(Like.user_id == me.id).all()
+    target_ids = [lk.target_id for lk in mine]
+    # 對方也喜歡我（互相）
+    theirs = db.query(Like).filter(and_(Like.user_id.in_(target_ids), Like.target_id == me.id)).all()
+    matched_ids = {lk.user_id for lk in theirs}
+
+    if not matched_ids:
+        return {"matches": []}
+
+    users = db.query(User).filter(User.id.in_(matched_ids)).all()
+
     out = []
     for u in users:
         out.append({
+            "id": u.id,
             "username": u.username,
-            "display_name": u.display_name or u.username,
+            "display_name": u.display_name,
             "gender": u.gender,
-            "birthday": u.birthday.isoformat() if u.birthday else None,
-            "bio": u.bio,
-            "interests": from_interests_json(u.interests_json),
+            "age": calc_age(u.birthday),
             "city": u.city,
+            "interests": _interests_to_list_for_api(u.interests),
+            "bio": u.bio or "",
+            "distance_km": (round(haversine_km(me.lat, me.lng, u.lat, u.lng), 3)
+                            if (me.lat and me.lng and u.lat and u.lng) else None),
         })
-    out.sort(key=lambda x: (x["display_name"] or x["username"]))
+
+    # 依最後更新時間或距離排序（這裡用距離）
+    out.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"] or 10**9))
     return {"matches": out}
 
-@app.get("/messages/{peer_username}")
-def get_messages(peer_username: str, request: Request, db: Session = Depends(get_db)):
-    me = current_user(db, get_bearer_token(request))
-    peer = db.query(User).filter(User.username == peer_username).first()
-    if not peer: raise HTTPException(status_code=404, detail="對方不存在")
-    room = room_key_for(me.id, peer.id)
-    msgs = (
-        db.query(Message)
-        .filter(Message.room == room)
-        .order_by(Message.created_at.asc())
-        .limit(200)
-        .all()
-    )
-    return {"messages": [
-        {
-            "sender": (me.username if m.sender_id == me.id else peer.username),
-            "recipient": (peer.username if m.sender_id == me.id else me.username),
-            "content": m.content,
-            "created_at": m.created_at.isoformat() + "Z",
-        } for m in msgs
-    ]}
 
-@app.post("/messages/{peer_username}")
-def send_message(peer_username: str, payload: SendIn, request: Request, db: Session = Depends(get_db)):
-    me = current_user(db, get_bearer_token(request))
-    peer = db.query(User).filter(User.username == peer_username).first()
-    if not peer: raise HTTPException(status_code=404, detail="對方不存在")
-    content = (payload.content or "").strip()
-    if not content: raise HTTPException(status_code=400, detail="訊息不得為空白")
-    room = room_key_for(me.id, peer.id)
-    msg = Message(room=room, sender_id=me.id, recipient_id=peer.id, content=content)
-    db.add(msg); db.commit(); db.refresh(msg)
-    _payload = {
-        "room": room, "sender": me.username, "recipient": peer.username,
-        "content": content, "created_at": msg.created_at.isoformat() + "Z",
-    }
-    for ws in list(ROOMS.get(room, set())):
-        try:
-            import anyio
-            anyio.from_thread.run(ws.send_json, _payload)
-        except Exception:
-            ROOMS[room].discard(ws)
-    return {"ok": True}
+# ----------------------------
+# 聊天（HTTP 歷史 & WebSocket）
+# ----------------------------
+@app.get("/chat/history/{peer_id}", response_model=List[ChatMessageOut])
+def chat_history(peer_id: int, request: Request, limit: int = 50, db: Session = Depends(get_db)):
+    token = get_bearer_token(request)
+    me = current_user(db, token)
 
-ROOMS: Dict[str, Set[WebSocket]] = {}
+    if not is_matched(db, me.id, peer_id):
+        raise HTTPException(status_code=403, detail="not matched")
 
-@app.websocket("/ws")
-async def ws_chat(websocket: WebSocket):
-    token = websocket.query_params.get("token")
-    peer_username = websocket.query_params.get("peer")
-    if not token or not peer_username:
-        await websocket.close(code=1008); return
+    qs = db.query(Message).filter(
+        or_(
+            and_(Message.sender_id == me.id, Message.recipient_id == peer_id),
+            and_(Message.sender_id == peer_id, Message.recipient_id == me.id),
+        )
+    ).order_by(Message.created_at.desc()).limit(max(10, min(limit, 200))).all()
+
+    return [
+        ChatMessageOut(
+            id=m.id,
+            sender_id=m.sender_id,
+            recipient_id=m.recipient_id,
+            content=m.content,
+            created_at=m.created_at,
+        )
+        for m in reversed(qs)  # 由舊到新
+    ]
+
+
+# WebSocket 連線管理
+class WSManager:
+    def __init__(self):
+        self.active: Dict[int, WebSocket] = {}
+
+    async def connect(self, user_id: int, ws: WebSocket):
+        await ws.accept()
+        self.active[user_id] = ws
+
+    def disconnect(self, user_id: int):
+        self.active.pop(user_id, None)
+
+    async def send_to(self, user_id: int, payload: dict):
+        ws = self.active.get(user_id)
+        if ws:
+            await ws.send_text(json.dumps(payload))
+
+
+ws_manager = WSManager()
+
+
+@app.websocket("/ws/chat")
+async def ws_chat(
+    websocket: WebSocket,
+    token: str = Query(...),
+    peer_id: int = Query(...),
+):
+    # 驗證 token 與是否配對
     try:
-        username = get_username_from_token(token)
+        username = decode_access_token(token)
     except HTTPException:
-        await websocket.close(code=1008); return
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"type": "error", "detail": "invalid token"}))
+        await websocket.close()
+        return
+
     db = SessionLocal()
     try:
         me = db.query(User).filter(User.username == username).first()
-        peer = db.query(User).filter(User.username == peer_username).first()
-        if not me or not peer:
-            await websocket.close(code=1008); return
-        room = room_key_for(me.id, peer.id)
-    finally:
-        db.close()
-    await websocket.accept()
-    ROOMS.setdefault(room, set()).add(websocket)
-    try:
+        if not me:
+            await websocket.accept()
+            await websocket.send_text(json.dumps({"type": "error", "detail": "user not found"}))
+            await websocket.close()
+            return
+
+        if not is_matched(db, me.id, peer_id):
+            await websocket.accept()
+            await websocket.send_text(json.dumps({"type": "error", "detail": "not matched"}))
+            await websocket.close()
+            return
+
+        await ws_manager.connect(me.id, websocket)
+
+        # 通知：上線
+        await ws_manager.send_to(peer_id, {"type": "peer_online", "peer_id": me.id})
+
         while True:
-            data = await websocket.receive_json()
-            content = str(data.get("content", "")).strip()
-            if not content: continue
-            db = SessionLocal()
-            try:
-                msg = Message(room=room, sender_id=me.id, recipient_id=peer.id, content=content)
-                db.add(msg); db.commit(); db.refresh(msg)
-                payload = {
-                    "room": room, "sender": me.username, "recipient": peer.username,
-                    "content": content, "created_at": msg.created_at.isoformat() + "Z",
-                }
-            finally:
-                db.close()
-            for ws in list(ROOMS.get(room, set())):
-                try:
-                    await ws.send_json(payload)
-                except Exception:
-                    ROOMS[room].discard(ws)
+            text = await websocket.receive_text()
+            text = text.strip()
+            if not text:
+                continue
+
+            # 寫 DB
+            msg = Message(sender_id=me.id, recipient_id=peer_id, content=text)
+            db.add(msg)
+            db.commit()
+            db.refresh(msg)
+
+            payload = {
+                "type": "message",
+                "id": msg.id,
+                "sender_id": me.id,
+                "recipient_id": peer_id,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat(),
+            }
+            # 回自己
+            await ws_manager.send_to(me.id, payload)
+            # 推給對方
+            await ws_manager.send_to(peer_id, payload)
+
     except WebSocketDisconnect:
         pass
     finally:
-        ROOMS.get(room, set()).discard(websocket)
+        ws_manager.disconnect(me.id if "me" in locals() and me else -1)
+        db.close()
 
-DISCLAIMER_HTML = f"""<!doctype html><meta charset="utf-8"><title>{APP_NAME}｜免責聲明</title>
-<body style="font-family:system-ui,-apple-system,'Noto Sans TC',Arial;line-height:1.7;max-width:900px;margin:40px auto;padding:0 16px;">
-<h1>{APP_NAME}｜免責聲明</h1>
-<p>本服務提供交友配對與聊天平台，不擔保使用者資料或配對結果之真實性與適用性；線上互動與線下會面風險由您自行承擔。如發現違法或不當內容，請來信 <b>call91122@gmail.com</b> 檢舉。</p>
-<p>服務可能因維護或第三方異常而中斷或延遲，本服務不負賠償責任（法律強制規定除外）。</p>
-<p>您使用本服務，即表示已閱讀並同意本免責聲明與隱私權政策。</p>
-<p>服務提供者：<b>林俊穎</b>　聯絡信箱：<b>call91122@gmail.com</b></p>
-</body>"""
 
-PRIVACY_HTML = f"""<!doctype html><meta charset="utf-8"><title>{APP_NAME}｜隱私權政策</title>
-<body style="font-family:system-ui,-apple-system,'Noto Sans TC',Arial;line-height:1.7;max-width:900px;margin:40px auto;padding:0 16px;">
-<h1>{APP_NAME}｜隱私權政策</h1>
-<p>我們僅蒐集提供服務所需之最小資料：暱稱、性別、生日、自介、興趣標籤、城市；啟用精準定位時，將另行徵得同意後蒐集經緯度，可隨時關閉。</p>
-<p>您得行使查詢、閱覽、複製、補正、刪除及停止使用等權利；請寄信至 <b>call91122@gmail.com</b>，我們將於合理期間內處理。</p>
-<p>資料可能儲存於境內/境外雲端，我們採傳輸加密、強雜湊等安全措施保護您的資料。</p>
-</body>"""
-
-@app.get("/disclaimer", response_class=HTMLResponse)
-def disclaimer_page():
-    return HTMLResponse(content=DISCLAIMER_HTML)
-
-@app.get("/privacy", response_class=HTMLResponse)
-def privacy_page():
-    return HTMLResponse(content=PRIVACY_HTML)
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
+# ----------------------------
+# 首頁 & 啟動
+# ----------------------------
 @app.get("/", response_class=HTMLResponse)
 def index():
     fp = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(fp): return FileResponse(fp)
-    return HTMLResponse(f"""
-    <!doctype html><meta charset="utf-8"><title>{APP_NAME}</title>
-    <div style="font-family:system-ui;-apple-system,'Noto Sans TC',Arial;max-width:720px;margin:60px auto;line-height:1.7;">
-      <h1>{APP_NAME}</h1>
-      <p>後端已啟動。請放置 <code>static/index.html</code> 以使用前端。</p>
-      <p><a href="/docs">Swagger API 文件</a> ｜ <a href="/disclaimer" target="_blank">免責聲明</a> ｜ <a href="/privacy" target="_blank">隱私權政策</a></p>
-    </div>
-    """)
+    if os.path.exists(fp):
+        return FileResponse(fp)
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="zh-Hant"><meta charset="utf-8"/>
+        <title>遊戲配對網 API</title>
+        <body style="font-family: system-ui, -apple-system, Segoe UI, Roboto">
+          <h1>🚀 遊戲配對網 後端 API</h1>
+          <p>服務已啟動。你可以前往 <a href="/docs">/docs</a> 測試 API。</p>
+          <ul>
+            <li>健康檢查：<a href="/health">/health</a></li>
+            <li>Swagger：<a href="/docs">/docs</a></li>
+          </ul>
+        </body></html>
+        """
+    )
 
-@app.on_event("startup")
-def _on_startup():
-    create_db()
-    migrate_users_table()
+
+# 建表
+create_db()
