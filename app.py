@@ -1,450 +1,467 @@
-# app.py
-import os, math, json
-from datetime import datetime, timedelta, date
-from typing import Optional, List
-
-from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-
-from pydantic import BaseModel, EmailStr, field_validator
-from passlib.context import CryptContext
-import jwt
-from jwt import InvalidTokenError
-
-from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, Date, DateTime, Boolean, Text, UniqueConstraint, text
-)
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from sqlalchemy.exc import IntegrityError
-
-
-# -------------------- 基本設定 --------------------
-APP_NAME = "遊戲配對網"
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")  # 正式請改環境變數
-JWT_ALG = "HS256"
-ACCESS_TOKEN_TTL_MIN = 24 * 60
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dating.db")
-engine_kwargs = {"echo": False, "future": True}
-connect_args = {}
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
-engine = create_engine(DATABASE_URL, connect_args=connect_args, **engine_kwargs)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
-Base = declarative_base()
-
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-
-
-# -------------------- 資料表 --------------------
-class User(Base):
-    __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)
-
-    id = Column(Integer, primary_key=True)
-    username = Column(String(50), nullable=False, unique=True, index=True)
-    email = Column(String(200), nullable=True)
-
-    password_hash = Column(String(200), nullable=False)
-
-    # 基本檔案
-    display_name = Column(String(60), nullable=True)         # 暱稱
-    gender = Column(String(10), nullable=True)               # 男/女/其他
-    birthday = Column(Date, nullable=True)                   # 生日
-    bio = Column(Text, nullable=True)                        # 自我介紹
-    interests_json = Column(Text, nullable=True)             # JSON 陣列字串
-    city = Column(String(60), nullable=True)                 # 城市（預設用這個）
-    # 定位
-    lat = Column(Float, nullable=True)
-    lng = Column(Float, nullable=True)
-    # 同意與時間
-    consent_agreed_at = Column(DateTime, nullable=True)
-    geo_precise_opt_in = Column(Boolean, nullable=False, default=False)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-def create_db():
-    Base.metadata.create_all(engine)
-
-
-def _table_has_column(conn, table: str, col: str) -> bool:
-    rows = conn.exec_driver_sql(f"PRAGMA table_info('{table}')").fetchall()
-    names = {r[1] for r in rows}  # (cid, name, type, notnull, dflt_value, pk)
-    return col in names
-
-
-def migrate_users_table():
-    # 輕量遷移：補新欄位（不刪不改型）
-    with engine.begin() as conn:
-        cols_to_add = []
-        if not _table_has_column(conn, "users", "display_name"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN display_name TEXT")
-        if not _table_has_column(conn, "users", "gender"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN gender TEXT")
-        if not _table_has_column(conn, "users", "birthday"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN birthday DATE")
-        if not _table_has_column(conn, "users", "bio"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN bio TEXT")
-        if not _table_has_column(conn, "users", "interests_json"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN interests_json TEXT")
-        if not _table_has_column(conn, "users", "city"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN city TEXT")
-        if not _table_has_column(conn, "users", "lat"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN lat REAL")
-        if not _table_has_column(conn, "users", "lng"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN lng REAL")
-        if not _table_has_column(conn, "users", "consent_agreed_at"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN consent_agreed_at DATETIME")
-        if not _table_has_column(conn, "users", "geo_precise_opt_in"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN geo_precise_opt_in INTEGER DEFAULT 0")
-        if not _table_has_column(conn, "users", "created_at"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN created_at DATETIME")
-        if not _table_has_column(conn, "users", "updated_at"):
-            cols_to_add.append("ALTER TABLE users ADD COLUMN updated_at DATETIME")
-
-        for s in cols_to_add:
-            conn.exec_driver_sql(s)
-
-
-# -------------------- Pydantic Schemas --------------------
-class SignupIn(BaseModel):
-    username: str
-    password: str
-    email: Optional[EmailStr] = None
-    consent_agreed: bool  # 必須為 True
-
-    @field_validator("email", mode="before")
-    @classmethod
-    def _empty_email_to_none(cls, v):
-        if isinstance(v, str) and v.strip() == "":
-            return None
-        return v
-
-
-class LoginIn(BaseModel):
-    username: str
-    password: str
-
-
-class ProfileIn(BaseModel):
-    display_name: Optional[str] = None
-    gender: Optional[str] = None  # "男"/"女"/"其他"
-    birthday: Optional[date] = None
-    bio: Optional[str] = None
-    interests: Optional[List[str]] = None  # 陣列
-    city: Optional[str] = None
-
-
-class MeOut(BaseModel):
-    id: int
-    username: str
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    gender: Optional[str] = None
-    birthday: Optional[date] = None
-    bio: Optional[str] = None
-    interests: List[str] = []
-    city: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
-    updated_at: Optional[datetime] = None
-    consent_agreed_at: Optional[datetime] = None
-    geo_precise_opt_in: bool = False
-
-
-class LocationIn(BaseModel):
-    lat: float
-    lng: float
-
-
-class NearbyIn(BaseModel):
-    lat: float
-    lng: float
-    radius_km: float = 100.0
-
-
-# -------------------- FastAPI --------------------
-app = FastAPI(title=f"{APP_NAME} 後端 API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-)
-
-
-@app.exception_handler(Exception)
-async def all_exception_handler(_req: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"detail": f"server error: {str(exc)}"})
-
-
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# -------------------- Auth --------------------
-def create_access_token(sub: str, ttl_minutes: int = ACCESS_TOKEN_TTL_MIN) -> str:
-    payload = {"sub": sub, "exp": datetime.utcnow() + timedelta(minutes=ttl_minutes)}
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
-
-
-def get_username_from_token(token: str) -> str:
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        return str(payload["sub"])
-    except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="無效或過期的授權")
-
-
-def get_bearer_token(request: Request) -> str:
-    auth = request.headers.get("authorization") or request.headers.get("Authorization")
-    if auth and auth.lower().startswith("bearer "):
-        return auth.split(" ", 1)[1].strip()
-    raise HTTPException(status_code=401, detail="缺少 Bearer Token")
-
-
-def current_user(db: Session, token: str) -> User:
-    username = get_username_from_token(token)
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="用戶不存在")
-    return user
-
-
-# -------------------- Helpers --------------------
-def to_interests_json(arr: Optional[List[str]]) -> Optional[str]:
-    if not arr:
-        return None
-    norm = []
-    for s in arr:
-        s = (s or "").strip()
-        if not s:
-            continue
-        # 英數轉大寫；中文維持原樣
-        norm.append(s.upper() if s.isascii() else s)
-    # 去重、保序
-    seen = set()
-    out = []
-    for s in norm:
-        if s not in seen:
-            seen.add(s)
-            out.append(s)
-    return json.dumps(out, ensure_ascii=False)
-
-
-def from_interests_json(s: Optional[str]) -> List[str]:
-    if not s:
-        return []
-    try:
-        val = json.loads(s)
-        return [str(x) for x in val]
-    except Exception:
-        return []
-
-
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    p1 = math.radians(lat1)
-    p2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlmb = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
-    return 2 * R * math.asin(math.sqrt(a))
-
-
-# -------------------- Routes --------------------
-@app.get("/health")
-def health():
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
-
-
-@app.post("/auth/signup")
-def signup(payload: SignupIn, db: Session = Depends(get_db)):
-    if not payload.consent_agreed:
-        raise HTTPException(status_code=400, detail="需勾選同意條款後才能註冊")
-    if db.query(User.id).filter(User.username == payload.username).first():
-        raise HTTPException(status_code=400, detail="username 已使用")
-    try:
-        u = User(
-            username=payload.username.strip(),
-            email=(payload.email or None),
-            password_hash=pwd_context.hash(payload.password),
-            consent_agreed_at=datetime.utcnow(),
-        )
-        db.add(u)
-        db.commit()
-        return {"ok": True}
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="帳號已存在")
-    except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"detail": f"server error: {str(e)}"})
-
-
-@app.post("/auth/login")
-def login(payload: LoginIn, db: Session = Depends(get_db)):
-    u = db.query(User).filter(User.username == payload.username).first()
-    if not u or not pwd_context.verify(payload.password, u.password_hash):
-        raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
-    return {"access_token": create_access_token(u.username), "token_type": "bearer"}
-
-
-@app.get("/me", response_model=MeOut)
-def get_me(request: Request, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    u = current_user(db, token)
-    return MeOut(
-        id=u.id, username=u.username, email=u.email,
-        display_name=u.display_name, gender=u.gender, birthday=u.birthday,
-        bio=u.bio, interests=from_interests_json(u.interests_json), city=u.city,
-        lat=u.lat, lng=u.lng, updated_at=u.updated_at,
-        consent_agreed_at=u.consent_agreed_at, geo_precise_opt_in=bool(u.geo_precise_opt_in),
-    )
-
-
-@app.patch("/me")
-def patch_me(payload: ProfileIn, request: Request, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    u = current_user(db, token)
-
-    if payload.display_name is not None:
-        u.display_name = payload.display_name.strip() or None
-    if payload.gender is not None:
-        # 正規化成「男/女/其他」
-        g = (payload.gender or "").strip().lower()
-        if g in ("男", "male", "m"):
-            u.gender = "男"
-        elif g in ("女", "female", "f"):
-            u.gender = "女"
-        elif g:
-            u.gender = "其他"
-        else:
-            u.gender = None
-    if payload.birthday is not None:
-        u.birthday = payload.birthday
-    if payload.bio is not None:
-        u.bio = payload.bio.strip() or None
-    if payload.interests is not None:
-        u.interests_json = to_interests_json(payload.interests)
-    if payload.city is not None:
-        u.city = payload.city.strip() or None
-
-    db.add(u)
-    db.commit()
-    return {"ok": True}
-
-
-@app.post("/me/location")
-def update_location(payload: LocationIn, request: Request, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    u = current_user(db, token)
-    u.lat = float(payload.lat)
-    u.lng = float(payload.lng)
-    db.add(u)
-    db.commit()
-    return {"ok": True}
-
-
-@app.post("/nearby")
-def nearby(payload: NearbyIn, request: Request, db: Session = Depends(get_db)):
-    token = get_bearer_token(request)
-    me = current_user(db, token)
-
-    users = (
-        db.query(User)
-        .filter(User.id != me.id)
-        .filter(User.lat.isnot(None), User.lng.isnot(None))
-        .all()
-    )
-
-    out = []
-    for u in users:
-        d = haversine_km(payload.lat, payload.lng, u.lat, u.lng)
-        if d <= max(0.0, payload.radius_km):
-            out.append({
-                "username": u.username,
-                "display_name": u.display_name or u.username,
-                "gender": u.gender,
-                "birthday": u.birthday.isoformat() if u.birthday else None,
-                "bio": u.bio,
-                "interests": from_interests_json(u.interests_json),
-                "city": u.city,
-                "distance_km": round(d, 2),
-            })
-
-    # 依距離排序
-    out.sort(key=lambda x: x["distance_km"])
-    return {"users": out}
-
-
-# ---------- 免責聲明 / 隱私權政策（內建頁面） ----------
-DISCLAIMER_HTML = f"""
-<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
-<title>{APP_NAME}｜免責聲明</title>
-<body style="font-family:system-ui, -apple-system, 'Noto Sans TC', Arial; line-height:1.7; max-width:900px; margin:40px auto; padding:0 16px;">
-<h1>{APP_NAME}｜免責聲明</h1>
-<p>本服務提供交友配對與聊天平台，不擔保使用者資料或配對結果之真實性與適用性；線上互動與線下會面風險由您自行承擔。如發現違法或不當內容，請來信 <b>call91122@gmail.com</b> 檢舉。</p>
-<p>服務可能因維護或第三方異常而中斷或延遲，本服務不負賠償責任（法律強制規定除外）。</p>
-<p>您使用本服務，即表示已閱讀並同意本免責聲明與隱私權政策。</p>
-<p>服務提供者：<b>林俊穎</b>　聯絡信箱：<b>call91122@gmail.com</b></p>
-</body></html>
-"""
-
-PRIVACY_HTML = f"""
-<!doctype html><html lang="zh-Hant"><meta charset="utf-8">
-<title>{APP_NAME}｜隱私權政策</title>
-<body style="font-family:system-ui, -apple-system, 'Noto Sans TC', Arial; line-height:1.7; max-width:900px; margin:40px auto; padding:0 16px;">
-<h1>{APP_NAME}｜隱私權政策</h1>
-<p>我們僅蒐集提供服務所需之最小資料：暱稱、性別、生日、自介、興趣標籤、城市；啟用精準定位時，將另行徵得同意後蒐集經緯度，可隨時關閉。</p>
-<p>您得行使查詢、閱覽、複製、補正、刪除及停止使用等權利；請寄信至 <b>call91122@gmail.com</b>，我們將於合理期間內處理。</p>
-<p>資料可能儲存於境內/境外雲端，我們採傳輸加密、強雜湊等安全措施保護您的資料。</p>
-<p>如有重大變更，將公告於本頁。</p>
-</body></html>
-"""
-
-@app.get("/disclaimer", response_class=HTMLResponse)
-def disclaimer_page():
-    return HTMLResponse(content=DISCLAIMER_HTML)
-
-@app.get("/privacy", response_class=HTMLResponse)
-def privacy_page():
-    return HTMLResponse(content=PRIVACY_HTML)
-
-
-# ---------- 靜態與首頁 ----------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-@app.get("/", response_class=HTMLResponse)
-def index():
-    fp = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(fp):
-        return FileResponse(fp)
-    # 若未放前端，顯示入口
-    return HTMLResponse(f"""
-    <!doctype html><meta charset="utf-8"><title>{APP_NAME}</title>
-    <div style="font-family:system-ui;-apple-system,'Noto Sans TC',Arial;max-width:720px;margin:60px auto;line-height:1.7;">
-      <h1>{APP_NAME}</h1>
-      <p>後端已啟動。請放置 <code>static/index.html</code> 以使用前端。</p>
-      <p><a href="/docs">Swagger API 文件</a> ｜ <a href="/disclaimer" target="_blank">免責聲明</a> ｜ <a href="/privacy" target="_blank">隱私權政策</a></p>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>遊戲配對網</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Noto Sans TC","Segoe UI",Roboto,Arial;background:#f7f7fb;margin:0;color:#222}
+    .wrap{max-width:1200px;margin:28px auto;padding:0 16px}
+    h1{font-size:28px;margin:0 0 8px}
+    .sub{color:#666;margin-bottom:16px}
+    .card{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 20px;margin:14px 0}
+    .row{display:flex;gap:16px;flex-wrap:wrap}
+    .col{flex:1 1 420px;min-width:320px}
+    label{display:block;font-size:14px;margin:8px 0 6px;color:#444}
+    input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #d7d7e0;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
+    input:focus,textarea:focus{border-color:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+    .btn{display:inline-block;border:0;border-radius:10px;padding:10px 16px;background:#2962ff;color:#fff;cursor:pointer;font-weight:600}
+    .btn.green{background:#0aa56b}.btn.gray{background:#e5e7eb;color:#111}.btn.red{background:#e63b3b}
+    .status{font-weight:700;padding:5px 9px;border-radius:999px}.ok{background:#e6f7ef;color:#117a47}.bad{background:#fde8e8;color:#9b2226}
+    .muted{color:#666;font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+    .tag{display:inline-block;background:#eef2ff;color:#1f3a8a;border-radius:999px;padding:2px 8px;margin:2px 4px 0 0;font-size:12px}
+    .small{font-size:12px;color:#555}
+    /* Chat panel */
+    .chat{position:sticky;top:12px;height:520px;display:flex;flex-direction:column}
+    .msgs{flex:1;border:1px solid #d7d7e0;border-radius:10px;padding:10px;overflow:auto;background:#fff}
+    .msg{margin:6px 0;padding:8px 10px;border-radius:10px;max-width:80%}
+    .me{background:#e6f7ef;margin-left:auto}.other{background:#eef2ff;margin-right:auto}
+    .chatbar{display:flex;gap:8px;margin-top:8px}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>遊戲配對網</h1>
+  <div class="sub">註冊需同意 <a href="/disclaimer" target="_blank">免責聲明</a> 與 <a href="/privacy" target="_blank">隱私權政策</a>。</div>
+
+  <div class="row">
+    <div class="card col">
+      <h3>建立帳號</h3>
+      <label>用戶名</label><input id="su_username" autocomplete="username">
+      <label>密碼（≥6）</label><input id="su_password" type="password" autocomplete="new-password">
+      <label>電子信箱（可空白）</label><input id="su_email" type="email">
+      <label><input type="checkbox" id="su_consent"> 我已詳讀並同意 <a href="/disclaimer" target="_blank">免責聲明</a> 與 <a href="/privacy" target="_blank">隱私權政策</a></label>
+      <div style="margin-top:10px"><button class="btn" id="btnSignup">註冊</button></div>
+      <div class="muted" id="su_msg" style="margin-top:8px"></div>
     </div>
-    """)
 
+    <div class="card col">
+      <h3>登入</h3>
+      <label>用戶名</label><input id="li_username" autocomplete="username">
+      <label>密碼</label><input id="li_password" type="password" autocomplete="current-password">
+      <div style="margin-top:10px"><button class="btn green" id="btnLogin">登入</button></div>
+      <div class="muted" id="li_msg" style="margin-top:8px">登入成功後將自動回報定位。</div>
+      <div style="margin-top:8px">登入狀態：<span id="authStatus" class="status bad">未登入</span> <button class="btn gray" id="btnLogout">登出</button></div>
+    </div>
+  </div>
 
-# ---------- 啟動 ----------
-@app.on_event("startup")
-def _on_startup():
-    create_db()
-    migrate_users_table()
+  <div class="card">
+    <h3>我的資料</h3>
+    <div class="row">
+      <div class="col"><label>暱稱</label><input id="pf_name"></div>
+      <div class="col">
+        <label>性別</label>
+        <select id="pf_gender">
+          <option value="">（未設定）</option>
+          <option value="男">男</option>
+          <option value="女">女</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="col"><label>生日</label><input id="pf_bday" type="date"></div>
+      <div class="col"><label>城市</label><input id="pf_city" placeholder="例：台北市"></div>
+    </div>
+    <label>自我介紹</label><textarea id="pf_bio" rows="3"></textarea>
+    <label>興趣標籤（以逗號分隔；英數自動大寫、中文維持）</label>
+    <input id="pf_interests" placeholder="例如：LOL, 漫畫, APEX">
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn" id="btnSaveProfile">儲存</button>
+      <button class="btn gray" id="btnRefreshMe">重新載入</button>
+    </div>
+    <div class="muted" id="me_msg" style="margin-top:8px"></div>
+  </div>
+
+  <div class="row">
+    <div class="card col">
+      <h3>附近的人（預設 100 公里）</h3>
+      <div class="small">已嘗試自動回報定位；若未授權定位，請允許或手動變更城市。</div>
+      <div style="margin:10px 0">
+        <label>搜尋半徑（公里）</label>
+        <input id="radius" value="100">
+        <button class="btn" id="btnNearby">搜尋附近</button>
+      </div>
+      <div id="nearbyList" class="grid"></div>
+    </div>
+
+    <div class="card col chat">
+      <h3>我的配對 & 聊天</h3>
+      <div id="matchList" class="grid" style="margin-bottom:8px"></div>
+      <div id="chatWrap" style="display:none">
+        <div class="small" id="chatTitle">與誰聊天</div>
+        <div id="msgs" class="msgs"></div>
+        <div class="chatbar">
+          <input id="msgInput" placeholder="輸入訊息..." />
+          <button class="btn" id="btnSend">送出</button>
+        </div>
+      </div>
+      <div class="muted" id="chatMsg"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div><a href="/disclaimer" target="_blank">免責聲明</a> ｜ <a href="/privacy" target="_blank">隱私權政策</a> ｜ <a href="/docs" target="_blank">API 文件</a></div>
+  </div>
+</div>
+
+<script>
+  // ------------ API base（隱藏，使用同源） ------------
+  const API_BASE = window.location.origin;
+  const WS_BASE = API_BASE.replace(/^http/, 'ws');
+
+  // ------------ Auth Token ------------
+  const tokenKey = 'authToken';
+  const setToken = t => { localStorage.setItem(tokenKey, t); refreshAuthStatus(); };
+  const getToken = () => localStorage.getItem(tokenKey) || '';
+  const clearToken = () => { localStorage.removeItem(tokenKey); refreshAuthStatus(); };
+  const authHeader = () => getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {};
+
+  function refreshAuthStatus(){
+    const el = document.getElementById('authStatus');
+    if(getToken()){
+      el.textContent = '已登入'; el.className = 'status ok';
+    }else{
+      el.textContent = '未登入'; el.className = 'status bad';
+    }
+  }
+  refreshAuthStatus();
+
+  // ------------ 註冊 / 登入 / 登出 ------------
+  document.getElementById('btnSignup').onclick = async () => {
+    const username = document.getElementById('su_username').value.trim();
+    const password = document.getElementById('su_password').value;
+    const email = document.getElementById('su_email').value.trim();
+    const consent = document.getElementById('su_consent').checked;
+    const msg = document.getElementById('su_msg');
+    msg.textContent = '送出中…';
+    try{
+      const r = await fetch(`${API_BASE}/auth/signup`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password, email, consent_agreed: consent})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      msg.textContent = '註冊成功，請登入。';
+    }catch(e){ msg.textContent = `失敗：${e.message || e}`; }
+  };
+
+  document.getElementById('btnLogin').onclick = async () => {
+    const username = document.getElementById('li_username').value.trim();
+    const password = document.getElementById('li_password').value;
+    const el = document.getElementById('li_msg');
+    el.textContent = '登入中…';
+    try{
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      setToken(data.access_token);
+      el.textContent = '登入成功！將嘗試自動回報定位…';
+      tryAutoGeoReport();
+      // 載入我的資料、配對
+      loadMe(); loadMatches();
+    }catch(e){ el.textContent = `登入失敗：${e.message || e}`; }
+  };
+
+  document.getElementById('btnLogout').onclick = () => {
+    clearToken();
+    document.getElementById('nearbyList').innerHTML = '';
+    document.getElementById('matchList').innerHTML = '';
+    closeChat();
+  };
+
+  // ------------ 我 / 儲存 ------------
+  async function loadMe(){
+    const msg = document.getElementById('me_msg');
+    msg.textContent = '載入中…';
+    try{
+      const r = await fetch(`${API_BASE}/me`, { headers: {...authHeader()} });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      document.getElementById('pf_name').value = data.display_name || '';
+      document.getElementById('pf_gender').value = data.gender || '';
+      document.getElementById('pf_bday').value = data.birthday || '';
+      document.getElementById('pf_city').value = data.city || '';
+      document.getElementById('pf_bio').value = data.bio || '';
+      document.getElementById('pf_interests').value = (data.interests||[]).join(', ');
+      msg.textContent = '已載入。';
+    }catch(e){ msg.textContent = `錯誤：${e.message || e}`; }
+  }
+  document.getElementById('btnRefreshMe').onclick = loadMe;
+
+  document.getElementById('btnSaveProfile').onclick = async () => {
+    const msg = document.getElementById('me_msg');
+    msg.textContent = '儲存中…';
+    const payload = {
+      display_name: val('pf_name'),
+      gender: val('pf_gender'),
+      birthday: val('pf_bday') || null,
+      city: val('pf_city'),
+      bio: val('pf_bio'),
+      interests: val('pf_interests').split(',').map(s => s.trim()).filter(Boolean)
+    };
+    try{
+      const r = await fetch(`${API_BASE}/me`, {
+        method:'PATCH', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      msg.textContent = '已儲存。';
+      loadMatches(); // 更新卡片資訊
+    }catch(e){ msg.textContent = `錯誤：${e.message || e}`; }
+  };
+
+  const val = id => document.getElementById(id).value.trim();
+
+  // ------------ 定位 / 附近 ------------
+  async function tryAutoGeoReport(){
+    if(!getToken()) return;
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async (pos)=>{
+      try{
+        await fetch(`${API_BASE}/me/location`, {
+          method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+          body: JSON.stringify({lat: pos.coords.latitude, lng: pos.coords.longitude})
+        });
+      }catch(_){}
+    }, (_)=>{}, {enableHighAccuracy:false, timeout:5000, maximumAge:60000});
+  }
+
+  document.getElementById('btnNearby').onclick = searchNearby;
+
+  async function searchNearby(){
+    const list = document.getElementById('nearbyList');
+    list.innerHTML = '搜尋中…';
+    if(!getToken()){ list.innerHTML = '<div class="muted">請先登入</div>'; return; }
+
+    let lat=null, lng=null;
+    try{
+      const me = await (await fetch(`${API_BASE}/me`, { headers:{...authHeader()} })).json();
+      lat = me.lat; lng = me.lng;
+      if((lat==null || lng==null) && navigator.geolocation){
+        await new Promise(resolve=>{
+          navigator.geolocation.getCurrentPosition((pos)=>{ lat=pos.coords.latitude; lng=pos.coords.longitude; resolve(); }, ()=>resolve(), {timeout:4000});
+        });
+      }
+    }catch(_){}
+
+    if(lat==null || lng==null){ list.innerHTML = '<div class="muted">尚無定位，請允許定位或於個人資料填寫城市。</div>'; return; }
+
+    const radius = parseFloat(document.getElementById('radius').value || '100');
+    try{
+      const r = await fetch(`${API_BASE}/nearby`, {
+        method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify({lat, lng, radius_km: radius})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      renderNearby(data.users || []);
+    }catch(e){ list.innerHTML = `<div class="muted">錯誤：${e.message || e}</div>`; }
+  }
+
+  function renderNearby(users){
+    const list = document.getElementById('nearbyList');
+    if(!users.length){ list.innerHTML = '<div class="muted">目前查無附近用戶</div>'; return; }
+    list.innerHTML = '';
+    for(const u of users){
+      const age = u.birthday ? calcAge(u.birthday) : '';
+      const g = zhGender(u.gender);
+      const tags = (u.interests||[]).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(' ');
+      const bio = u.bio ? escapeHtml(u.bio) : '（尚無自我介紹）';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div>
+            <div style="font-weight:700">${escapeHtml(u.display_name || u.username)}</div>
+            <div class="small">${[g, age?`${age} 歲`:null, u.city||null].filter(Boolean).join("・")}　距離：約 ${u.distance_km} km</div>
+          </div>
+          <button class="btn" data-username="${u.username}">配對（喜歡）</button>
+        </div>
+        <div style="margin-top:6px">${bio}</div>
+        <div style="margin-top:6px">${tags}</div>
+      `;
+      card.querySelector('button').onclick = () => likeUser(u.username);
+      list.appendChild(card);
+    }
+  }
+
+  async function likeUser(username){
+    if(!getToken()) return alert('請先登入');
+    try{
+      const r = await fetch(`${API_BASE}/like`, {
+        method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify({target: username})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      if(data.matched){
+        alert('互相喜歡！已成為配對，右側可開始聊天。');
+        loadMatches();
+      }else{
+        alert('已送出喜歡，等待對方也喜歡你。');
+      }
+    }catch(e){ alert(`失敗：${e.message || e}`); }
+  }
+
+  const zhGender = g => {
+    if(!g) return '未設定';
+    const s = String(g).toLowerCase();
+    if(s==='male' || s==='m' || s==='男') return '男';
+    if(s==='female' || s==='f' || s==='女') return '女';
+    return '其他';
+  };
+
+  const calcAge = iso => {
+    try{
+      const d = new Date(iso);
+      const today = new Date();
+      let age = today.getFullYear() - d.getFullYear();
+      const m = today.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+      return age;
+    }catch(_){ return ''; }
+  };
+
+  const escapeHtml = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // ------------ 我的配對 & 聊天 ------------
+  let currentPeer = null;
+  let ws = null;
+
+  async function loadMatches(){
+    if(!getToken()) return;
+    const box = document.getElementById('matchList');
+    box.innerHTML = '載入中…';
+    try{
+      const r = await fetch(`${API_BASE}/matches`, { headers:{...authHeader()} });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+
+      const arr = data.matches || [];
+      if(!arr.length){ box.innerHTML = '<div class="muted">尚無配對</div>'; closeChat(); return; }
+      box.innerHTML = '';
+      for(const u of arr){
+        const g = zhGender(u.gender);
+        const bio = u.bio ? escapeHtml(u.bio) : '（尚無自我介紹）';
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.cursor = 'pointer';
+        card.innerHTML = `
+          <div style="font-weight:700">${escapeHtml(u.display_name || u.username)}</div>
+          <div class="small">${[g, u.city||null].filter(Boolean).join("・")}</div>
+          <div style="margin-top:6px">${bio}</div>
+        `;
+        card.onclick = ()=> openChat(u.username, u.display_name || u.username);
+        box.appendChild(card);
+      }
+    }catch(e){ box.innerHTML = `<div class="muted">錯誤：${e.message || e}</div>`; }
+  }
+
+  function closeChat(){
+    document.getElementById('chatWrap').style.display = 'none';
+    document.getElementById('msgs').innerHTML = '';
+    if(ws){ try{ ws.close(); }catch(_){ } ws = null; }
+    currentPeer = null;
+  }
+
+  async function openChat(peerUsername, displayName){
+    currentPeer = peerUsername;
+    document.getElementById('chatWrap').style.display = '';
+    document.getElementById('chatTitle').textContent = `與「${displayName}」聊天`;
+    document.getElementById('msgs').innerHTML = '載入訊息…';
+
+    // 歷史訊息
+    try{
+      const r = await fetch(`${API_BASE}/messages/${encodeURIComponent(peerUsername)}`, { headers:{...authHeader()} });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      renderMsgs(data.messages || []);
+    }catch(e){
+      document.getElementById('msgs').innerHTML = `<div class="muted">錯誤：${e.message || e}</div>`;
+    }
+
+    // 建立 WebSocket
+    if(ws){ try{ ws.close(); }catch(_){ } }
+    try{
+      ws = new WebSocket(`${WS_BASE}/ws?peer=${encodeURIComponent(peerUsername)}&token=${encodeURIComponent(getToken())}`);
+      ws.onmessage = (ev)=>{
+        const msg = JSON.parse(ev.data);
+        appendMsg(msg.sender, msg.content, msg.created_at);
+      };
+      ws.onclose = ()=>{};
+    }catch(_){
+      // 無法建立 WS 就用 HTTP fallback（送出時走 POST）
+    }
+  }
+
+  function renderMsgs(arr){
+    const box = document.getElementById('msgs'); box.innerHTML = '';
+    for(const m of arr){ appendMsg(m.sender, m.content, m.created_at); }
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function appendMsg(sender, content, ts){
+    const me = document.getElementById('li_username').value.trim() || '(你)';
+    const div = document.createElement('div');
+    const isMe = (sender === me) || (sender === getCachedUsername());
+    div.className = `msg ${isMe?'me':'other'}`;
+    const time = new Date(ts || Date.now()).toLocaleTimeString();
+    div.innerHTML = `<div class="small" style="opacity:.7">${sender}・${time}</div><div>${escapeHtml(content)}</div>`;
+    const box = document.getElementById('msgs');
+    box.appendChild(div); box.scrollTop = box.scrollHeight;
+  }
+
+  function getCachedUsername(){
+    // 粗略從 /me 取得一次後快取（簡化：從表單取不到時）
+    return window.__cachedUser || '';
+  }
+
+  document.getElementById('btnSend').onclick = async ()=>{
+    const input = document.getElementById('msgInput');
+    const text = input.value.trim();
+    if(!text || !currentPeer) return;
+    input.value = '';
+
+    // 優先走 WebSocket
+    if(ws && ws.readyState === 1){
+      ws.send(JSON.stringify({content: text}));
+      return;
+    }
+    // Fallback：HTTP
+    try{
+      const r = await fetch(`${API_BASE}/messages/${encodeURIComponent(currentPeer)}`, {
+        method:'POST', headers:{'Content-Type':'application/json', ...authHeader()},
+        body: JSON.stringify({content: text})
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.detail || r.statusText);
+      // 立即顯示（時間由後端決定，但這裡先本地顯示）
+      appendMsg(getCachedUsername() || '我', text, new Date().toISOString());
+    }catch(e){
+      document.getElementById('chatMsg').textContent = `送出失敗：${e.message || e}`;
+      setTimeout(()=>document.getElementById('chatMsg').textContent='', 2000);
+    }
+  };
+
+  // ------------ 工具 ------------
+  // 初次載入
+  refreshAuthStatus();
+  if(getToken()){ loadMe(); tryAutoGeoReport(); loadMatches(); }
+
+</script>
+</body>
+</html>
