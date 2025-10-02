@@ -28,6 +28,12 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 # =========================
 # 環境設定
 # =========================
+# =========================
+# 環境設定
+# =========================
+# =========================
+# 環境設定
+# =========================
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_ALG = "HS256"
 ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days
@@ -42,20 +48,22 @@ elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL
 
 engine_kwargs = {"echo": False, "future": True}
 
+# SQLite 與 PostgreSQL 需要不同 connect_args
 connect_args: Dict[str, Any] = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
-# ✅ 加入連線池參數
+# ✅ 建立資料庫引擎，含連線池參數
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
+    pool_size=5,         # 最大常駐連線數
+    max_overflow=0,      # 禁止超額連線，避免 Supabase 免費版被拒絕
+    pool_timeout=30,     # 30 秒內沒有可用連線就報錯
+    pool_recycle=1800,   # 連線最長存活 30 分鐘，自動回收
     **engine_kwargs
 )
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
