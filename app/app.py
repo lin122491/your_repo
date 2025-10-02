@@ -34,13 +34,14 @@ ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dating.db")
 
-# ✅ Postgres driver 統一用 psycopg2
+# Postgres 統一用 psycopg v3
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 engine_kwargs = {"echo": False, "future": True}
+
 connect_args: Dict[str, Any] = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
